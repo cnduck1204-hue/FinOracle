@@ -1,0 +1,15 @@
+﻿# 生成的产物（脚本会重新生成）
+database/*.txt
+database/*.json
+
+# Python 临时文件
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE 配置（VS Code / PyCharm / IntelliJ）
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
