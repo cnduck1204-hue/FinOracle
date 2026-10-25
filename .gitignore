@@ -9,6 +9,7 @@ __pycache__/
 
 # Test
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 

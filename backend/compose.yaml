@@ -1,0 +1,94 @@
+name: finoracle
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-finoracle}
+      MYSQL_USER: ${MYSQL_USER:-finoracle}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+00:00
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          MYSQL_PWD="$${MYSQL_PASSWORD}"
+          mysql --protocol=TCP --host=127.0.0.1
+          --user="$${MYSQL_USER}"
+          --database="$${MYSQL_DATABASE}"
+          --execute="SELECT 1"
+          >/dev/null
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+  redis:
+    image: redis:7.4
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: finoracle-api:local
+    init: true
+    ports:
+      - "127.0.0.1:${API_PORT:-8001}:8000"
+    environment:
+      APP_NAME: ${APP_NAME:-FinOracle API}
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      API_V1_PREFIX: ${API_V1_PREFIX:-/api/v1}
+      OPENAPI_ENABLED: "${OPENAPI_ENABLED:-true}"
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-finoracle}
+      MYSQL_USER: ${MYSQL_USER:-finoracle}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DB: "${REDIS_DB:-0}"
+      LOGIN_MAX_FAILURES: "${LOGIN_MAX_FAILURES:-5}"
+      LOGIN_LOCK_SECONDS: "${LOGIN_LOCK_SECONDS:-900}"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}"
+      JWT_ALGORITHM: "${JWT_ALGORITHM:-HS256}"
+      JWT_ACCESS_TOKEN_MINUTES: "${JWT_ACCESS_TOKEN_MINUTES:-30}"
+      JWT_REFRESH_TOKEN_DAYS: "${JWT_REFRESH_TOKEN_DAYS:-7}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import os, urllib.request;
+          prefix = os.environ.get('API_V1_PREFIX', '/api/v1').rstrip('/');
+          urllib.request.urlopen('http://127.0.0.1:8000' + prefix + '/ready', timeout=8).close()
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+volumes:
+  mysql_data:
+  redis_data:
