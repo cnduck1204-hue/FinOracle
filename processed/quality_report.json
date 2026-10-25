@@ -1,0 +1,363 @@
+{
+  "status": "completed",
+  "parser_version": "2.0.0",
+  "generated_at": "2026-10-16T17:53:42.861865+00:00",
+  "manifest_sha256": "886596c8fc08241b2727b945a30b85f2eaec89dbf5d2250c1fa94e4d904a8252",
+  "document_count": 7,
+  "release_document_count": 2,
+  "release_chunk_count": 123,
+  "documents": [
+    {
+      "doc_id": "P020240802341036118987",
+      "parser_version": "2.0.0",
+      "file_sha256": "08d2645a002d716acbb4f920c6e1d093972e9d4c3764efc88558ad543deb6769",
+      "issues": [],
+      "eligible_for_release": true,
+      "declared_quality_status": "approved_for_integration",
+      "known_issues": [],
+      "page_count": 12,
+      "pages": [
+        {
+          "page": 1,
+          "text_chars": 751,
+          "image_count": 0
+        },
+        {
+          "page": 2,
+          "text_chars": 668,
+          "image_count": 0
+        },
+        {
+          "page": 3,
+          "text_chars": 672,
+          "image_count": 0
+        },
+        {
+          "page": 4,
+          "text_chars": 660,
+          "image_count": 0
+        },
+        {
+          "page": 5,
+          "text_chars": 602,
+          "image_count": 0
+        },
+        {
+          "page": 6,
+          "text_chars": 661,
+          "image_count": 0
+        },
+        {
+          "page": 7,
+          "text_chars": 694,
+          "image_count": 0
+        },
+        {
+          "page": 8,
+          "text_chars": 863,
+          "image_count": 0
+        },
+        {
+          "page": 9,
+          "text_chars": 722,
+          "image_count": 0
+        },
+        {
+          "page": 10,
+          "text_chars": 776,
+          "image_count": 0
+        },
+        {
+          "page": 11,
+          "text_chars": 671,
+          "image_count": 0
+        },
+        {
+          "page": 12,
+          "text_chars": 622,
+          "image_count": 0
+        }
+      ],
+      "chunk_count": 63,
+      "status": "parsed_candidate"
+    },
+    {
+      "doc_id": "非银行支付机构监督管理条例(国务院令 第768号)",
+      "parser_version": "2.0.0",
+      "file_sha256": "1366ffa2c29931cba35a10ed135e6800a485576d36abfb21790e85726ed9fbb3",
+      "issues": [],
+      "eligible_for_release": true,
+      "declared_quality_status": "approved_for_integration",
+      "known_issues": [],
+      "page_count": 7,
+      "pages": [
+        {
+          "page": 1,
+          "text_chars": 1397,
+          "image_count": 8
+        },
+        {
+          "page": 2,
+          "text_chars": 1582,
+          "image_count": 0
+        },
+        {
+          "page": 3,
+          "text_chars": 1847,
+          "image_count": 0
+        },
+        {
+          "page": 4,
+          "text_chars": 1789,
+          "image_count": 0
+        },
+        {
+          "page": 5,
+          "text_chars": 1758,
+          "image_count": 0
+        },
+        {
+          "page": 6,
+          "text_chars": 1522,
+          "image_count": 0
+        },
+        {
+          "page": 7,
+          "text_chars": 848,
+          "image_count": 3
+        }
+      ],
+      "chunk_count": 60,
+      "status": "parsed_candidate"
+    },
+    {
+      "doc_id": "上海期货交易所实际控制关系账户管理办法",
+      "parser_version": "2.0.0",
+      "file_sha256": "6307c7723031a451668a05c078bd5129575ff0c077d36d4ef5e71871f7e0e915",
+      "issues": [],
+      "eligible_for_release": false,
+      "declared_quality_status": "recollect",
+      "known_issues": [
+        "PDF页面右侧裁切，原文缺字；不得入库"
+      ],
+      "page_count": 5,
+      "pages": [
+        {
+          "page": 1,
+          "text_chars": 892,
+          "image_count": 0
+        },
+        {
+          "page": 2,
+          "text_chars": 1227,
+          "image_count": 0
+        },
+        {
+          "page": 3,
+          "text_chars": 1126,
+          "image_count": 0
+        },
+        {
+          "page": 4,
+          "text_chars": 774,
+          "image_count": 0
+        },
+        {
+          "page": 5,
+          "text_chars": 100,
+          "image_count": 3
+        }
+      ],
+      "chunk_count": 22,
+      "status": "parsed_candidate"
+    },
+    {
+      "doc_id": "中华人民共和国反垄断法-中国证券协会",
+      "parser_version": "2.0.0",
+      "file_sha256": "7178ba6c7a537016919a5e71edf17a4e9ca580fc9c0c9f02f3787f218c4342b6",
+      "issues": [],
+      "eligible_for_release": false,
+      "declared_quality_status": "recollect",
+      "known_issues": [
+        "正文存在缺字；尚未找回精确原始页面；需重采"
+      ],
+      "page_count": 7,
+      "pages": [
+        {
+          "page": 1,
+          "text_chars": 618,
+          "image_count": 3
+        },
+        {
+          "page": 2,
+          "text_chars": 1511,
+          "image_count": 0
+        },
+        {
+          "page": 3,
+          "text_chars": 1351,
+          "image_count": 0
+        },
+        {
+          "page": 4,
+          "text_chars": 1697,
+          "image_count": 0
+        },
+        {
+          "page": 5,
+          "text_chars": 1654,
+          "image_count": 0
+        },
+        {
+          "page": 6,
+          "text_chars": 1683,
+          "image_count": 1
+        },
+        {
+          "page": 7,
+          "text_chars": 93,
+          "image_count": 0
+        }
+      ],
+      "chunk_count": 70,
+      "status": "parsed_candidate"
+    },
+    {
+      "doc_id": "国家金融监督管理总局",
+      "parser_version": "2.0.0",
+      "file_sha256": "f5ddf07b181dc792134210a1bc92ccfa013297dcef7e380fd6e3b55fe9df3242",
+      "issues": [],
+      "eligible_for_release": false,
+      "declared_quality_status": "recollect",
+      "known_issues": [
+        "多处正文截断，不能作为完整法规文本"
+      ],
+      "page_count": 11,
+      "pages": [
+        {
+          "page": 1,
+          "text_chars": 145,
+          "image_count": 6
+        },
+        {
+          "page": 2,
+          "text_chars": 912,
+          "image_count": 0
+        },
+        {
+          "page": 3,
+          "text_chars": 1054,
+          "image_count": 0
+        },
+        {
+          "page": 4,
+          "text_chars": 1037,
+          "image_count": 0
+        },
+        {
+          "page": 5,
+          "text_chars": 1265,
+          "image_count": 0
+        },
+        {
+          "page": 6,
+          "text_chars": 1047,
+          "image_count": 0
+        },
+        {
+          "page": 7,
+          "text_chars": 984,
+          "image_count": 0
+        },
+        {
+          "page": 8,
+          "text_chars": 1189,
+          "image_count": 0
+        },
+        {
+          "page": 9,
+          "text_chars": 1280,
+          "image_count": 0
+        },
+        {
+          "page": 10,
+          "text_chars": 185,
+          "image_count": 0
+        },
+        {
+          "page": 11,
+          "text_chars": 389,
+          "image_count": 6
+        }
+      ],
+      "chunk_count": 95,
+      "status": "parsed_candidate"
+    },
+    {
+      "doc_id": "aml_2012_178_scanned",
+      "parser_version": "2.0.0",
+      "file_sha256": "b5541f15d590143a94b6bc9e8c50268390997cbc05e28dcf10a6d206ac5c9457",
+      "issues": [
+        {
+          "code": "no_articles"
+        },
+        {
+          "code": "pages_without_text",
+          "pages": [
+            1,
+            2,
+            3,
+            4
+          ]
+        }
+      ],
+      "eligible_for_release": false,
+      "declared_quality_status": "needs_ocr",
+      "known_issues": [
+        "真实扫描件，4页均无文字层；仅作OCR输入，不进入条文检索"
+      ],
+      "page_count": 4,
+      "pages": [
+        {
+          "page": 1,
+          "text_chars": 0,
+          "image_count": 1
+        },
+        {
+          "page": 2,
+          "text_chars": 0,
+          "image_count": 1
+        },
+        {
+          "page": 3,
+          "text_chars": 0,
+          "image_count": 1
+        },
+        {
+          "page": 4,
+          "text_chars": 0,
+          "image_count": 1
+        }
+      ],
+      "chunk_count": 0,
+      "status": "needs_ocr_review"
+    },
+    {
+      "doc_id": "shfe_2026_218_official_doc",
+      "parser_version": "2.0.0",
+      "file_sha256": "8ff75ecd0399ee91908db60ef70d4a8e3f0470c9b18cfddb5ba0e77bb33d01c6",
+      "issues": [
+        {
+          "code": "unsupported_format"
+        }
+      ],
+      "eligible_for_release": false,
+      "declared_quality_status": "needs_conversion",
+      "known_issues": [
+        "官方原始DOC附件；本解析器仅处理PDF，转换校对后再交付正文"
+      ],
+      "status": "needs_conversion",
+      "chunk_count": 0
+    }
+  ]
+}

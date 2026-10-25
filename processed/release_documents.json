@@ -1,0 +1,78 @@
+[
+  {
+    "doc_id": "P020240802341036118987",
+    "title": "证券公司风险处置条例",
+    "issuer": "国务院",
+    "document_number": "国务院令第523号（原公布文号）",
+    "source_url": "https://investor.szse.cn/lawrules/rules/P020240802341036118987.pdf",
+    "download_url": "https://investor.szse.cn/lawrules/rules/P020240802341036118987.pdf",
+    "published_date": "2023-07-20",
+    "effective_date": "2023-07-20",
+    "version_note": "2023年第二次修订",
+    "validity_status": "unknown",
+    "validity_checked_at": null,
+    "collected_at": null,
+    "registered_at": "2026-10-17",
+    "verified_at": "2026-10-17",
+    "file_path": "database/P020240802341036118987.pdf",
+    "file_type": "pdf",
+    "sha256": "08d2645a002d716acbb4f920c6e1d093972e9d4c3764efc88558ad543deb6769",
+    "extraction_type": "text",
+    "quality_status": "approved_for_integration",
+    "approved_for_integration": true,
+    "expected_articles": 63,
+    "issues": [],
+    "parse_profile": {},
+    "evidence": [
+      {
+        "type": "official_pdf_text_comparison",
+        "path": "sources/securities_risk_2023.pdf",
+        "note": "重新下载版本与本地文件字节不同，须比较每页提取文字；不能称为哈希相同。"
+      },
+      {
+        "url": "https://xzfg.moj.gov.cn/SearchTitleFront?QueryAll=%E8%AF%81%E5%88%B8%E5%85%AC%E5%8F%B8%E9%A3%8E%E9%99%A9%E5%A4%84%E7%BD%AE%E6%9D%A1%E4%BE%8BZVING1",
+        "note": "官方法规库展示2023-07-20公布和施行；版本记录不等于已穷尽检查后续修改。"
+      }
+    ],
+    "review_note": "全文文本比对通过；PDF全页缩略排版检查及关键条文检查通过。用于指定版本联调，不宣称已完成全量法律时效审查。",
+    "reviewed_parser_version": "2.0.0"
+  },
+  {
+    "doc_id": "非银行支付机构监督管理条例(国务院令 第768号)",
+    "title": "非银行支付机构监督管理条例",
+    "issuer": "国务院",
+    "document_number": "国务院令第768号",
+    "source_url": "https://www.pbc.gov.cn/tiaofasi/144941/144953/5174993/index.html",
+    "download_url": null,
+    "published_date": "2023-12-09",
+    "effective_date": "2024-05-01",
+    "version_note": "2023年公布版本",
+    "validity_status": "unknown",
+    "validity_checked_at": null,
+    "collected_at": null,
+    "registered_at": "2026-10-17",
+    "verified_at": "2026-10-17",
+    "file_path": "database/非银行支付机构监督管理条例(国务院令 第768号).pdf",
+    "file_type": "pdf",
+    "sha256": "1366ffa2c29931cba35a10ed135e6800a485576d36abfb21790e85726ed9fbb3",
+    "extraction_type": "text",
+    "quality_status": "approved_for_integration",
+    "approved_for_integration": true,
+    "expected_articles": 60,
+    "issues": [],
+    "parse_profile": {
+      "end_markers": [
+        "打印本页 关闭窗口"
+      ]
+    },
+    "evidence": [
+      {
+        "url": "https://app.www.gov.cn/govdata/gov/202312/17/510339/article.html",
+        "path": "sources/payment_gov.html",
+        "note": "用于全文逐条比对；网页发布时间2023-12-17不作法规公布日期。"
+      }
+    ],
+    "review_note": "全文文本比对通过；PDF全页缩略排版检查及关键条文检查通过。用于指定版本联调，不宣称已完成全量法律时效审查。",
+    "reviewed_parser_version": "2.0.0"
+  }
+]

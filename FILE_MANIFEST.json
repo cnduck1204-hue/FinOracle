@@ -1,0 +1,266 @@
+{
+  "package": "数据采集第一批交付",
+  "date": "2026-10-17",
+  "files": [
+    {
+      "path": "collection_pipeline.py",
+      "bytes": 9643,
+      "sha256": "4af4db086b7cfea655cf15984acbf7519e43556d5a827c80a5d20c4d52b869fe"
+    },
+    {
+      "path": "DATA_CONTRACT.md",
+      "bytes": 4685,
+      "sha256": "6d597a5c77494c3fca836637925ef0abbdf9d77f5fe16e77c67959a943d04eab"
+    },
+    {
+      "path": "database/P020240802341036118987.pdf",
+      "bytes": 156783,
+      "sha256": "08d2645a002d716acbb4f920c6e1d093972e9d4c3764efc88558ad543deb6769"
+    },
+    {
+      "path": "database/上海期货交易所实际控制关系账户管理办法.pdf",
+      "bytes": 354628,
+      "sha256": "6307c7723031a451668a05c078bd5129575ff0c077d36d4ef5e71871f7e0e915"
+    },
+    {
+      "path": "database/中华人民共和国反垄断法-中国证券协会.pdf",
+      "bytes": 573796,
+      "sha256": "7178ba6c7a537016919a5e71edf17a4e9ca580fc9c0c9f02f3787f218c4342b6"
+    },
+    {
+      "path": "database/国家金融监督管理总局.pdf",
+      "bytes": 1500191,
+      "sha256": "f5ddf07b181dc792134210a1bc92ccfa013297dcef7e380fd6e3b55fe9df3242"
+    },
+    {
+      "path": "database/非银行支付机构监督管理条例(国务院令 第768号).pdf",
+      "bytes": 627285,
+      "sha256": "1366ffa2c29931cba35a10ed135e6800a485576d36abfb21790e85726ed9fbb3"
+    },
+    {
+      "path": "documents.json",
+      "bytes": 10845,
+      "sha256": "886596c8fc08241b2727b945a30b85f2eaec89dbf5d2250c1fa94e4d904a8252"
+    },
+    {
+      "path": "HANDOFF.md",
+      "bytes": 2493,
+      "sha256": "37a1e0b21bbed0626c97f8493e9499f8f40e80d5d0cf5e9c3e4a4543dd15b77a"
+    },
+    {
+      "path": "parse_pdf.py",
+      "bytes": 154,
+      "sha256": "9d4569877e749d2de2d4a039769ef54cfbda59da66e58bfdcefee78a383dc7e3"
+    },
+    {
+      "path": "processed/candidates/aml_2012_178_scanned.excluded.json",
+      "bytes": 4,
+      "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    {
+      "path": "processed/candidates/aml_2012_178_scanned.json",
+      "bytes": 4,
+      "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+    },
+    {
+      "path": "processed/candidates/aml_2012_178_scanned.raw.txt",
+      "bytes": 15,
+      "sha256": "2293ac531a2537737a57a6d3431f186269b18d679698cfc85f6f2657f3cc2832"
+    },
+    {
+      "path": "processed/candidates/aml_2012_178_scanned.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "processed/candidates/P020240802341036118987.excluded.json",
+      "bytes": 622,
+      "sha256": "bbbc9052af4f4619e0acffb95adef13938839c1832cee61e6e4486e3c8e84bf5"
+    },
+    {
+      "path": "processed/candidates/P020240802341036118987.json",
+      "bytes": 37453,
+      "sha256": "be15e968c1c3b96b0526e98a943e2ba56caf45db32cba706b360b8e5e5c04f13"
+    },
+    {
+      "path": "processed/candidates/P020240802341036118987.raw.txt",
+      "bytes": 23765,
+      "sha256": "f0d4c346b466ab4ccf5aeb03d98f0be2fa30006e1b8f2cf63cc221e361493254"
+    },
+    {
+      "path": "processed/candidates/P020240802341036118987.txt",
+      "bytes": 25254,
+      "sha256": "c89e10cf21a91722e2e39824ab698e78116a7f825b924b031201520c5895a535"
+    },
+    {
+      "path": "processed/candidates/上海期货交易所实际控制关系账户管理办法.excluded.json",
+      "bytes": 2359,
+      "sha256": "d484e5029aacba0ce8034ad074ef0700e42b3b3f0191c45addb1c18347a42b33"
+    },
+    {
+      "path": "processed/candidates/上海期货交易所实际控制关系账户管理办法.json",
+      "bytes": 16936,
+      "sha256": "45288f7e4b20efaf2f3e5d9a95b9379872f2a096036f15157fc6af8201d7c605"
+    },
+    {
+      "path": "processed/candidates/上海期货交易所实际控制关系账户管理办法.raw.txt",
+      "bytes": 11582,
+      "sha256": "40fca5c3f8237a7b21c6b96ce9cfa37dc962dfee3b45e72ec213f2c5f055fdf3"
+    },
+    {
+      "path": "processed/candidates/上海期货交易所实际控制关系账户管理办法.txt",
+      "bytes": 11141,
+      "sha256": "be04f5dc499357011ee8d4ddb0c2e8c8031625f1ef06acb1cc1aa9d240b7fa61"
+    },
+    {
+      "path": "processed/candidates/中华人民共和国反垄断法-中国证券协会.excluded.json",
+      "bytes": 1623,
+      "sha256": "0d6cfa70c86f8dfe6e4a2d83ad919cd545035818c44262242440e31b3bf257ba"
+    },
+    {
+      "path": "processed/candidates/中华人民共和国反垄断法-中国证券协会.json",
+      "bytes": 43022,
+      "sha256": "181017c55fa01d879f698492955cd5636a7ebdda085336434e47fc9bc40b6551"
+    },
+    {
+      "path": "processed/candidates/中华人民共和国反垄断法-中国证券协会.raw.txt",
+      "bytes": 24351,
+      "sha256": "b6f91421d3a0f25b49d0b27e80adf460a5cfd910d53473172ba9a755dea532e6"
+    },
+    {
+      "path": "processed/candidates/中华人民共和国反垄断法-中国证券协会.txt",
+      "bytes": 25303,
+      "sha256": "d0c66613494867f27ad08f1ec45fd772ab1be494cd444c3f8eac2e775e48879f"
+    },
+    {
+      "path": "processed/candidates/国家金融监督管理总局.excluded.json",
+      "bytes": 3132,
+      "sha256": "c7d7a6e4aef3d6009fee3f2c4f6e49e2eef73aa9ada53251d55abe3b0d2f41c7"
+    },
+    {
+      "path": "processed/candidates/国家金融监督管理总局.json",
+      "bytes": 47957,
+      "sha256": "e70bd0e8a17d641653f5f179c9c0081a09b9ba61ae8ec3562dffba14ca2387e9"
+    },
+    {
+      "path": "processed/candidates/国家金融监督管理总局.raw.txt",
+      "bytes": 26708,
+      "sha256": "5698c25c2078d41f90fba4e040a04452379990ea03e2cf4510dc36566b6e69e2"
+    },
+    {
+      "path": "processed/candidates/国家金融监督管理总局.txt",
+      "bytes": 28079,
+      "sha256": "832916ca27c95f78550647793ac2549ee4afe9d1201800bda67eeb9754972733"
+    },
+    {
+      "path": "processed/candidates/非银行支付机构监督管理条例(国务院令 第768号).excluded.json",
+      "bytes": 5115,
+      "sha256": "2c4bb95a124c54bb91efd10f47475228c19f7d002e198730885a4fb415610c82"
+    },
+    {
+      "path": "processed/candidates/非银行支付机构监督管理条例(国务院令 第768号).json",
+      "bytes": 44894,
+      "sha256": "c507c082f369f0ae31d52d8e7162a3e140f2b86d4d342b6ac7b94dca592e670d"
+    },
+    {
+      "path": "processed/candidates/非银行支付机构监督管理条例(国务院令 第768号).raw.txt",
+      "bytes": 29214,
+      "sha256": "10e4edccb125634a667b065e64400e0d7aca5cf59bad27c08f0d3ed4b6a1792a"
+    },
+    {
+      "path": "processed/candidates/非银行支付机构监督管理条例(国务院令 第768号).txt",
+      "bytes": 28385,
+      "sha256": "d277c52ab016b3932a9fae552ae2c8a6b7f34f669d2a586eb3f7d952bdf5f437"
+    },
+    {
+      "path": "processed/quality_report.json",
+      "bytes": 8885,
+      "sha256": "f83d1552936f96006c04e1035e603d050f7ef48af76b1d3b3ae1f648440ffc9a"
+    },
+    {
+      "path": "processed/release_chunks.json",
+      "bytes": 82342,
+      "sha256": "98c3f15878a8f0bd350c6f36bed6da51e934c4baba1da4fb1561dcbaeb75f8b9"
+    },
+    {
+      "path": "processed/release_documents.json",
+      "bytes": 3429,
+      "sha256": "6de469c746569483d3b0338f0fbabcdacce73da9adc474c87558bb39b5d5d7b3"
+    },
+    {
+      "path": "qa_examples.json",
+      "bytes": 10141,
+      "sha256": "4fde7aca27d88db88847eea16dce04535f9d7dc99db5632dd9aa9a53ebda2302"
+    },
+    {
+      "path": "QUALITY_REPORT.md",
+      "bytes": 4387,
+      "sha256": "f335a49e1d602f3af1c32a3763098ba74d552032e29eac8659b31fbfaa95a812"
+    },
+    {
+      "path": "README.md",
+      "bytes": 3962,
+      "sha256": "2f79b9789a069580fb324c2dadcea88049d15c31f97c3adbb37f7dbe0d91935d"
+    },
+    {
+      "path": "requirements.txt",
+      "bytes": 20,
+      "sha256": "69505ca0d154285d3931f8005a96c4e45a631cd9a344fa6a9304c711e6c41323"
+    },
+    {
+      "path": "schemas/chunk.schema.json",
+      "bytes": 807,
+      "sha256": "45d025bbe79e41c6f30ef9d088b2badbb8bdc1872dd33cc24081c9954323e816"
+    },
+    {
+      "path": "schemas/documents.schema.json",
+      "bytes": 4018,
+      "sha256": "d8265379b9bca9173a24f8d7e3f7013761eca6b194f18ecdc5baa04a4c933c4e"
+    },
+    {
+      "path": "sources/aml_2012_178_scanned.pdf",
+      "bytes": 514861,
+      "sha256": "b5541f15d590143a94b6bc9e8c50268390997cbc05e28dcf10a6d206ac5c9457"
+    },
+    {
+      "path": "sources/payment_gov.html",
+      "bytes": 37438,
+      "sha256": "0a252ed8ed9efafddd2efa6f9e0bb12d6bac3b9bc6c2ad1f73e2633a8782ee4c"
+    },
+    {
+      "path": "sources/payment_gov.txt",
+      "bytes": 27905,
+      "sha256": "bf67bcd103c8f58a58a9e8e2e238a5e434c3029e74f2fe3abb1051721097235f"
+    },
+    {
+      "path": "sources/securities_risk_2023.pdf",
+      "bytes": 156281,
+      "sha256": "17ca2899dad59509d25f753076f45d2a4754c6f60e4294aa3e03e512266519a6"
+    },
+    {
+      "path": "sources/shfe_2026_218.doc",
+      "bytes": 39424,
+      "sha256": "8ff75ecd0399ee91908db60ef70d4a8e3f0470c9b18cfddb5ba0e77bb33d01c6"
+    },
+    {
+      "path": "sources/text_comparison.json",
+      "bytes": 972,
+      "sha256": "dffb16fc1fbea668a667d4a5dc929fe8e87391dc8aff0b44cfd34fa9fb05afe4"
+    },
+    {
+      "path": "tests/test_parse_pdf.py",
+      "bytes": 5369,
+      "sha256": "aadcf8d11eb818095e69b4553dcd2dd32585abbdc12fda18d9ae97f9821d00aa"
+    },
+    {
+      "path": "validate_delivery.py",
+      "bytes": 3009,
+      "sha256": "1de73c421de9d2232b58bec2a50d319adf737431704e77199a4574ccff0db4ca"
+    },
+    {
+      "path": "verify_sources.py",
+      "bytes": 2758,
+      "sha256": "506213f955a3214abb431291e908ed7543f407227aec09a4da54b07854ffe965"
+    }
+  ]
+}

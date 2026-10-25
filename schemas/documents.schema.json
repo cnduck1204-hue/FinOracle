@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "as_of_date",
+    "documents"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "as_of_date": {
+      "type": "string"
+    },
+    "documents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "doc_id",
+          "title",
+          "issuer",
+          "file_path",
+          "file_type",
+          "extraction_type",
+          "quality_status",
+          "document_number",
+          "source_url",
+          "download_url",
+          "published_date",
+          "effective_date",
+          "version_note",
+          "validity_checked_at",
+          "collected_at",
+          "registered_at",
+          "verified_at",
+          "sha256",
+          "approved_for_integration",
+          "expected_articles",
+          "issues",
+          "evidence",
+          "parse_profile",
+          "validity_status"
+        ],
+        "properties": {
+          "doc_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "issuer": {
+            "type": "string",
+            "minLength": 1
+          },
+          "file_path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "file_type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "extraction_type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "quality_status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "document_number": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "download_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "published_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "effective_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "validity_checked_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "collected_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registered_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verified_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "approved_for_integration": {
+            "type": "boolean"
+          },
+          "expected_articles": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "parse_profile": {
+            "type": "object"
+          },
+          "validity_status": {
+            "enum": [
+              "unknown",
+              "not_yet_effective",
+              "effective",
+              "repealed"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

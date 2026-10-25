@@ -1,0 +1,5 @@
+# Keep snapshot bytes stable for SHA-256 and source-comparison verification.
+# Text files remain diffable; Git must not rewrite LF/CRLF on checkout.
+* -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+# Archived web sources include original whitespace; do not reformat evidence.
+sources/** -whitespace

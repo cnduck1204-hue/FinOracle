@@ -1,0 +1,28 @@
+{
+  "result": "passed",
+  "securities_page_count": 12,
+  "securities_all_pages_equal": true,
+  "payment_pdf_count": 60,
+  "payment_reference_count": 60,
+  "payment_differences": [],
+  "parser_issues": [],
+  "method": "NFKC and explicit character mapping; comparison ignores whitespace only",
+  "source_files": [
+    {
+      "path": "database\\P020240802341036118987.pdf",
+      "sha256": "08d2645a002d716acbb4f920c6e1d093972e9d4c3764efc88558ad543deb6769"
+    },
+    {
+      "path": "sources\\securities_risk_2023.pdf",
+      "sha256": "17ca2899dad59509d25f753076f45d2a4754c6f60e4294aa3e03e512266519a6"
+    },
+    {
+      "path": "database\\非银行支付机构监督管理条例(国务院令 第768号).pdf",
+      "sha256": "1366ffa2c29931cba35a10ed135e6800a485576d36abfb21790e85726ed9fbb3"
+    },
+    {
+      "path": "sources\\payment_gov.html",
+      "sha256": "0a252ed8ed9efafddd2efa6f9e0bb12d6bac3b9bc6c2ad1f73e2633a8782ee4c"
+    }
+  ]
+}

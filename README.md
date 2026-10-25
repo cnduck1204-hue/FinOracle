@@ -1,173 +1,77 @@
-# RAG-based Financial Knowledge QASystem Design — 数据采集模块
+# 金融制度数据采集模块
 
-## 这是什么
+本模块交付原始文件、来源清单、按条切分的 JSON、质量记录和联调样例。首批已有 2 份经过全文文本对照的制度，共 123 个条文切片；另提供 1 份真实扫描 PDF 供 OCR 验证。其他问题原件保留并隔离。
 
-本目录是 RAG-based 金融制度问答系统的**数据采集模块**。负责把 PDF 格式的金融法规/规章/制度文件，解析成结构化 JSON 数据，供 RAG 团队做检索用。
+## 先看哪些文件
 
-**当前状态**：已完成基础流水线（解析 → 过滤 → 切片 → JSON），支持批量处理。
+1. documents.json：全部 7 份登记原件的标题、来源、版本、哈希及质量状态。
+2. DATA_CONTRACT.md：字段定义及 RAG 接入约定。
+3. processed/release_documents.json 与 processed/release_chunks.json：首批联调数据。
+4. qa_examples.json：10 个问题、参考答案、条文引用与 PDF 页码。
+5. QUALITY_REPORT.md：检查证据、已修复问题和剩余工作。
+6. HANDOFF.md：你与 RAG 同学的交接步骤。
 
----
+已有 database 下的 TXT/JSON 为旧产物，仅留作对照；RAG 不应继续读取这些旧 JSON。新产物放在 processed，原始 PDF 没有被覆盖。
 
-## 目录结构
+## 本地运行
 
-```
-RAG-basedFinancialKnowledgeQASystemDesign/
-├── database/                       # 原始 PDF + 解析产物
-│   ├── *.pdf                       # 原始 PDF（手动下载/打印保存）
-│   ├── *.txt                       # 解析后的纯文本（人读）
-│   └── *.json                      # 按"条"切分的结构化数据（RAG 读）
-├── parse_pdf.py                    # 解析脚本（核心工具）
-├── samples/                        # 测试样本（备用）
-└── README.md                       # 本文件
-```
-
----
-
-## 怎么用
-
-### 1. 装环境（一次性）
+需要 Python 3.10 或更新版本。PowerShell 中进入本目录，先安装依赖：
 
 ```powershell
-D:\pyenvs\pytorch-env\Scripts\python.exe -m pip install pdfplumber -i https://pypi.tuna.tsinghua.edu.cn/simple
+python -m pip install -r requirements.txt
+python parse_pdf.py
+python verify_sources.py
+python validate_delivery.py
+python -m unittest discover -s tests -v
 ```
 
-> Python 环境位置：`D:\pyenvs\pytorch-env\`
-> 库：pdfplumber（处理 PDF）、json（标准库）、os（标准库）
-
-### 2. 准备 PDF
-
-把要处理的 PDF 放到 `database/` 目录下。
-
-**下载建议**：
-- 人民银行：`http://www.pbc.gov.cn` → 政策法规
-- 国家金融监督管理总局：`http://www.nfra.gov.cn` → 政策法规
-- 证监会：`http://www.csrc.gov.cn` → 政策法规
-- 上海期货交易所：`http://www.shfe.com.cn` → 业务规则
-- **通用招**：浏览器打开规章页面 → `Ctrl+P` → 打印机选"另存为 PDF" → 保存到 `database/`
-
-### 3. 跑脚本
+如果使用已有 Python 环境，可以将 python 替换为：
 
 ```powershell
-D:\pyenvs\pytorch-env\Scripts\python.exe E:\RAG-basedFinancialKnowledgeQASystemDesign\parse_pdf.py
+& 'D:\pyenvs\pytorch-env\Scripts\python.exe' parse_pdf.py
 ```
 
-**脚本行为**：
-- 自动扫描 `database/` 下所有 `.pdf` 文件
-- 自动跳过**已处理**的（已有同名 `.json`）
-- 每个 PDF 产出对应的 `.txt` + `.json`
+本次验证使用 Codex 附带的 Python 和 pdfplumber 0.11.10；尚未在上述 D 盘环境重复安装或运行。依赖文件固定了本次验证的 pdfplumber 版本。
 
----
+默认文件位置以脚本目录为基准，不要求从固定目录启动。指定不同清单及输出位置：
 
-## 输出格式
-
-### `.txt`（人读）
-
-完整正文，已过滤掉网页导航/页脚等噪声。
-
-### `.json`（RAG 读）
-
-**按"条"切分**，每条法规一个 chunk：
-
-```json
-[
-  {
-    "doc_id": "非银行支付机构监督管理条例(国务院令 第768号)",
-    "chunk_id": "非银行支付机构监督管理条例(国务院令 第768号)_001",
-    "chapter": "第一章 总则",
-    "article": "第一条",
-    "content": "为了规范非银行支付机构行为..."
-  },
-  {
-    "doc_id": "非银行支付机构监督管理条例(国务院令 第768号)",
-    "chunk_id": "非银行支付机构监督管理条例(国务院令 第768号)_002",
-    "chapter": "第一章 总则",
-    "article": "第二条",
-    "content": "本条例所称非银行支付机构..."
-  }
-]
+```powershell
+python parse_pdf.py --manifest documents.json --output-dir processed
 ```
 
-**RAG 同学**可以直接用 `chapter + article` 做精确引用（如"依据《XX》第六条"）。
+每次重新解析，不再按 JSON 是否存在跳过。不会覆盖 database 中的旧产物。处理失败返回退出码 1；已明确登记的扫描件或 DOC 不属于执行异常，状态写入报告并从发布数据中排除。
 
----
+运行中 quality_report.json 为 running；完成后为 completed。不要同时运行多个写入同一输出目录的进程。RAG 应在处理完成后读取发布文件。
 
-## 已支持的来源
+## 目录
 
-| 来源 | URL | 状态 |
-|---|---|---|
-| 中国人民银行 | pbc.gov.cn | ✅ 已测试 |
-| CSRC 法规数据库 | csrc.gov.cn | ✅ 已测试 |
-| 上海期货交易所 | shfe.com.cn | ✅ 已测试 |
-| 中国证券业协会 | sac.net.cn | ✅ 已测试 |
-| 国务院（via PBOC 转发） | 国务院令 PDF | ✅ 已测试 |
-| 国家金融监督管理总局 | nfra.gov.cn | ✅ 已测试 |
-
-> 新来源可能需要往 `noise_words` 加新关键词（见下文）。
-
----
-
-## 怎么扩展
-
-### 加新来源的噪声规则
-
-打开 `parse_pdf.py`，找到 `noise_words = [...]` 列表，**加一行**：
-
-```python
-noise_words = [
-    # 已有的...
-    "新网站导航词",   # ← 加这行
-]
+```text
+based_knowledge/
+  database/                  原有 5 份 PDF 与旧解析结果
+  sources/                   新下载原件及全文比对依据
+  documents.json             原件清单
+  parse_pdf.py               命令行入口
+  collection_pipeline.py     清洗、切片、质检和发布逻辑
+  requirements.txt           Python 依赖
+  schemas/                   JSON Schema
+  tests/                     有针对性的回归测试
+  processed/
+    candidates/              候选 JSON、原始文本、正文、清理记录
+    release_chunks.json      唯一推荐的首批入库条文
+    release_documents.json   配套文档信息
+    quality_report.json      本次处理结果
+  qa_examples.json           联调问题和引用
+  validate_delivery.py       原件及交付数据关联检查
+  verify_sources.py          离线重做与已保存官方来源的全文比对
+  DATA_CONTRACT.md            字段约定
+  QUALITY_REPORT.md          本批质量说明
+  HANDOFF.md                 交接步骤
 ```
 
-怎么找该加什么词？跑完一次后打开 .txt，看哪些行不像正文，就是噪声。
+## 新增文件
 
-### 重新处理某个文件
+将原件保存到 database 或 sources，在 documents.json 增加记录；先保持 approved_for_integration=false。首次处理后检查候选、被排除行、原件页面、条号和来源。确认完整后再审批，并记录该次 reviewed_parser_version。不能只因非空或条数正确就判定合格。
 
-直接删它的 `.json`（和 `.txt` 如果想重抽文本），再跑脚本。脚本会自动重处理。
+扫描件必须经过 OCR 和逐页校对；原 PDF 已被裁切时应重新采集，不得让语言模型补写。当前正式切片策略是每条一块，后续长条再分块由 RAG 同学协商维护。
 
-### 加新的处理逻辑
-
-`parse_pdf.py` 是单文件，结构清晰：
-
-| 段 | 干什么 | 改这里 |
-|---|---|---|
-| `noise_words` 列表 | 噪声关键词 | 加新规则 |
-| `parse_and_chunk()` 函数 | 核心处理逻辑 | 加新功能 |
-| 末尾的主循环 | 批量调度 | 调整处理策略 |
-
----
-
-## 已知限制
-
-- **扫描型 PDF（图片）** 需要先 OCR，本脚本不直接处理
-- **复杂表格** 可能解析错位，需要单独校对
-- **章/条识别** 依赖"第X章"和"第X条"格式，特殊编排的文档要改脚本
-- **来源适配**：换源时大概率要在 `noise_words` 加规则
-
----
-
-## 维护建议
-
-- 每次跑完抽检 1-2 个 .json，看章节和条文是否对得上
-- 新的来源先用 1 份文件测试，加好 `noise_words` 再批量
-- 反馈给 RAG 同学时附上 doc_id（前缀），方便他们定位
-
----
-
-## 团队协作
-
-- 本模块作者：数据采集同学
-- 主要用户：RAG 检索同学
-- 协作约定：JSON 格式有改动前先沟通
-
----
-
-## 维护日志
-
-| 日期 | 改动 | 备注 |
-|---|---|---|
-| 2026-10-14 | 初版：解析 + 过滤 + 切片 + 批量 | 央行/CSRC/上期所 三源测试通过 |
-| 2026-10-15 | 加 SAC 源（反垄断法）+ 国务院（证券公司风险处置条例）| 4 PDF 批量通过；新发现"您要搜索的内容"、"【字体..."噪声模式 |
-| 2026-10-15 | 补底部噪声 | 加 `"本站"`、`"打印 关闭"`；4 PDF 全干净 |
-| 2026-10-15 | 加 NFRA 源（商业银行法）+ 正则页码 | 5 PDF 全干净；新发现"无障碍浏览"、"发布时间："、"手机扫一扫"等 NFRA 特有噪声 |
-| 2026-10-15 | 字符规范化 | 加 `unicodedata.normalize('NFKC', text)` + 手动映射表（⺠/⻔/⻓ → 民/门/长）；消除 PDF 异体字问题 |
+本批是指定版本的联调样本，不是完整、现行的金融法规库。validity_status=unknown 不能解释为现行有效；需要回答现行制度问题时，必须先核验版本与时效。
