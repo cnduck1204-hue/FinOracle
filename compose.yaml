@@ -1,0 +1,22 @@
+name: finoracle
+
+include:
+  - path: ./backend/compose.yaml
+
+services:
+  web:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${API_V1_PREFIX:-/api/v1}
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s

@@ -105,4 +105,4 @@ uv run python -m tests.integration --fresh-install
 
 ## 下一阶段
 
-资料修改、管理员初始化与用户管理尚未实现；金融文档解析、检索、RAG 和前端也未实现。完整目标参见[基础需求](../docs/superpowers/specs/2026-09-20-backend-foundation-prd.md)。
+资料修改、管理员初始化与用户管理尚未实现；金融文档解析、检索和 RAG 尚未实现。配套前端已在 `frontend/` 接入现有认证接口，运行方式见[前端说明](../frontend/README.md)。完整目标参见[基础需求](../docs/superpowers/specs/2026-09-20-backend-foundation-prd.md)。

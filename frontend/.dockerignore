@@ -1,0 +1,10 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+coverage/
+e2e/
+.env
+.env.*
+*.log
+nginx.generated.conf
