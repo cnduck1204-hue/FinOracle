@@ -10,6 +10,7 @@ from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.db.session import engine
 from app.middleware.request_context import RequestContextMiddleware
+from app.services.bootstrap import initialize_admin
 
 settings = get_settings()
 
@@ -19,6 +20,7 @@ configure_logging(settings.log_level)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
+        await initialize_admin(settings, engine)
         yield
     finally:
         try:

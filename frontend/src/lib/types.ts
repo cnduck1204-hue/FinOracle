@@ -17,6 +17,8 @@ export interface TokenPair {
   user: User
 }
 
+export type ProfileInput = Pick<User, 'username' | 'email'>
+
 export interface RegisterInput {
   username: string
   email: string

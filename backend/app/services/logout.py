@@ -12,18 +12,13 @@ async def logout_user(
     token: str,
     session: AsyncSession,
     cache: Redis,
-    *,
-    all_sessions: bool = False,
 ) -> None:
     """Authenticate before revoking; never report success after a Redis failure."""
-    user = await get_current_user(token, session, cache)
+    await get_current_user(token, session, cache)
     claims = decode_token(token, expected_type="access")
     store = SessionStore(cache)
     try:
-        if all_sessions:
-            await store.revoke_all(user.id)
-        else:
-            await store.revoke(claims.sid)
+        await store.revoke(claims.sid)
     except RedisError as exc:
         raise AppException(
             code="AUTH_SERVICE_UNAVAILABLE",

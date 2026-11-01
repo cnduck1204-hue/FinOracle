@@ -16,7 +16,6 @@ async def check_rotation():
     store = SessionStore(redis_client)
     now = int(time())
     keys = []
-    index_keys = set()
 
     async def create_record(**changes):
         record = SessionRecord(
@@ -30,7 +29,6 @@ async def check_rotation():
             }
         )
         keys.append(f"finoracle:v2:auth:session:{record.id}")
-        index_keys.add(store._user_key(record.user_id))
         await store.create(record)
         return record
 
@@ -150,7 +148,7 @@ async def check_rotation():
         )
     finally:
         try:
-            await redis_client.delete(*keys, *index_keys)
+            await redis_client.delete(*keys)
             assert await redis_client.exists(*keys) == 0
         finally:
             await redis_client.aclose()

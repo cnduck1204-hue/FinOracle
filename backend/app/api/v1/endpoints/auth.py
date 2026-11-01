@@ -80,15 +80,5 @@ async def logout(
     session: Annotated[AsyncSession, Depends(get_db)],
     cache: Annotated[Redis, Depends(get_redis)],
 ) -> Response:
-    await logout_user(token, session, cache, all_sessions=False)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
-async def logout_all(
-    token: Annotated[str, Depends(require_access_token)],
-    session: Annotated[AsyncSession, Depends(get_db)],
-    cache: Annotated[Redis, Depends(get_redis)],
-) -> Response:
-    await logout_user(token, session, cache, all_sessions=True)
+    await logout_user(token, session, cache)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

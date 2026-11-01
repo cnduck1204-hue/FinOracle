@@ -11,7 +11,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from sqlalchemy import delete, select
 
 from app.cache.redis import redis_client
-from app.cache.sessions import SessionStore
 from app.db.session import SessionFactory, engine
 from app.models.user import User
 
@@ -22,7 +21,7 @@ async def main():
     try:
         async with SessionFactory() as session:
             ids = set(await session.scalars(select(User.id).where(User.username.in_(names))))
-        keys = [SessionStore._user_key(user_id) for user_id in ids]
+        keys = []
         owners = {str(user_id) for user_id in ids}
         async for key in redis_client.scan_iter(match="finoracle:v2:auth:session:*", count=100):
             raw = await redis_client.get(key)

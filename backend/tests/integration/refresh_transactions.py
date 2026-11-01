@@ -33,7 +33,6 @@ async def check_refresh():
 
     async def tracked_create(instance, record):
         session_keys.append(f"finoracle:v2:auth:session:{record.id}")
-        session_keys.append(SessionStore._user_key(record.user_id))
         await original_create(instance, record)
 
     async def log_in():

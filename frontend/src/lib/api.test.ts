@@ -35,6 +35,72 @@ function storage() {
 }
 
 describe('authentication client', () => {
+  it('updates the current profile and publishes the server-normalized user', async () => {
+    const updated = { ...user, username: 'alice_new', email: 'new@example.com' }
+    const client = new AuthClient({
+      storage: storage(),
+      fetcher: vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input).endsWith('/auth/login')) return json(pair())
+        expect(String(input)).toBe('/api/v1/users/me')
+        expect(init?.method).toBe('PATCH')
+        expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer access-1')
+        expect(JSON.parse(String(init?.body))).toEqual({
+          username: 'alice_new',
+          email: 'NEW@example.com',
+        })
+        return json(updated)
+      }),
+    })
+    await client.login('alice', 'Password123')
+    await expect(
+      client.updateProfile({ username: 'alice_new', email: 'NEW@example.com' }),
+    ).resolves.toEqual(updated)
+    expect(client.getSnapshot().user).toEqual(updated)
+    expect(client.getSnapshot().hasSession).toBe(true)
+  })
+
+  it('keeps the current user and session when a profile edit conflicts or returns invalid data', async () => {
+    let malformed = false
+    const client = new AuthClient({
+      storage: storage(),
+      fetcher: vi.fn(async (input: string | URL | Request) => {
+        if (String(input).endsWith('/auth/login')) return json(pair())
+        return malformed
+          ? json({ username: 'broken' })
+          : json({ code: 'USER_EMAIL_EXISTS', message: '邮箱已存在' }, 409)
+      }),
+    })
+    await client.login('alice', 'Password123')
+    await expect(client.updateProfile({ email: 'taken@example.com' })).rejects.toMatchObject({
+      code: 'USER_EMAIL_EXISTS',
+    })
+    malformed = true
+    await expect(client.updateProfile({ username: 'alice_new' })).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    })
+    expect(client.getSnapshot().user).toEqual(user)
+    expect(client.getSnapshot().hasSession).toBe(true)
+  })
+
+  it('does not restore a forgotten session when a profile update finishes late', async () => {
+    let finish!: (response: Response) => void
+    const client = new AuthClient({
+      storage: storage(),
+      fetcher: vi.fn(async (input: string | URL | Request) => {
+        if (String(input).endsWith('/auth/login')) return json(pair())
+        return new Promise<Response>((resolve) => {
+          finish = resolve
+        })
+      }),
+    })
+    await client.login('alice', 'Password123')
+    const editing = client.updateProfile({ username: 'alice_new' })
+    client.forgetSession()
+    finish(json({ ...user, username: 'alice_new' }))
+    await expect(editing).rejects.toMatchObject({ code: 'REQUEST_CANCELLED' })
+    expect(client.getSnapshot().user).toBeNull()
+  })
+
   it('serializes refresh when two protected requests have no access token', async () => {
     const saved = storage()
     saved.setItem(SESSION_KEY, 'refresh-0')
@@ -127,9 +193,29 @@ describe('authentication client', () => {
     )
     const client = new AuthClient({ storage: saved, fetcher })
     await client.login('alice', 'Password123')
-    await expect(client.logout(true)).rejects.toMatchObject({ status: 503 })
+    await expect(client.logout()).rejects.toMatchObject({ status: 503 })
     expect(client.getSnapshot().user?.username).toBe('alice')
     expect(saved.getItem(SESSION_KEY)).toBe('refresh-1')
+  })
+
+  it('logs out through the ordinary endpoint and clears credentials', async () => {
+    const saved = storage()
+    const fetcher = vi.fn(async (input: string | URL | Request, _init?: RequestInit) =>
+      String(input).endsWith('/auth/login') ? json(pair()) : new Response(null, { status: 204 }),
+    )
+    const client = new AuthClient({ storage: saved, fetcher })
+    await client.login('alice', 'Password123')
+    await client.logout()
+    const [url, init] = fetcher.mock.calls.at(-1)!
+    expect(url).toBe('/api/v1/auth/logout')
+    expect(init?.method).toBe('POST')
+    expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer access-1')
+    expect(client.getSnapshot()).toMatchObject({
+      user: null,
+      hasSession: false,
+      notice: '已退出登录。',
+    })
+    expect(saved.getItem(SESSION_KEY)).toBeNull()
   })
 
   it('ignores a login response from an abandoned session', async () => {

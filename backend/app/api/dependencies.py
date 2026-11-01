@@ -38,3 +38,13 @@ async def require_current_user(
     cache: Annotated[Redis, Depends(get_redis)],
 ) -> User:
     return await get_current_user(token, session, cache)
+
+
+async def require_admin(
+    user: Annotated[User, Depends(require_current_user)],
+) -> User:
+    if user.role != "admin":
+        raise AppException(
+            code="ADMIN_REQUIRED", message="需要管理员权限", status_code=403
+        )
+    return user

@@ -59,6 +59,9 @@ async def refresh_tokens(
                     status_code=403,
                 )
 
+            if record.auth_version != (user.auth_version or 0):
+                raise _invalid_refresh_token()
+
             access_token = create_token(
                 user_id=user.id,
                 role=user.role,

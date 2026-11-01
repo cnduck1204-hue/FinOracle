@@ -1,5 +1,15 @@
 import { expect, it } from 'vitest'
-import { validateRegistration } from './validation'
+import { validateProfile, validateRegistration } from './validation'
+
+it('validates editable profile fields without requiring a password', () => {
+  expect(validateProfile({ username: ' alice_01 ', email: 'alice@example.com' })).toEqual({})
+  for (const username of ['', 'ab', 'bad-name', '用户', 'a'.repeat(33)]) {
+    expect(validateProfile({ username, email: 'alice@example.com' }).username).toBeTruthy()
+  }
+  for (const email of ['', 'bad', 'a@b', 'a'.repeat(243) + '@example.com']) {
+    expect(validateProfile({ username: 'alice', email }).email).toBeTruthy()
+  }
+})
 
 it('matches registration rules and preserves meaningful password whitespace', () => {
   expect(

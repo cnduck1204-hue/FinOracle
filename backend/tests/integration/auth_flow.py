@@ -137,15 +137,10 @@ async def check_auth_flow():
             )
 
             await request(
-                "POST", "/auth/logout-all", status=204, token=second["access_token"]
+                "POST", "/auth/logout-all", status=404, token=second["access_token"]
             )
-            await request("GET", "/users/me", status=401, token=second["access_token"])
-            await request(
-                "POST",
-                "/auth/refresh",
-                status=401,
-                json={"refresh_token": second["refresh_token"]},
-            )
+            await request("GET", "/users/me", token=second["access_token"])
+            second = await refresh(second["refresh_token"])
             await request("GET", "/users/me", token=other["access_token"])
             third = await login(names[0])
             renewed = await refresh(third["refresh_token"])
@@ -156,8 +151,10 @@ async def check_auth_flow():
                 json={"refresh_token": third["refresh_token"]},
             )
             await request("GET", "/users/me", status=401, token=renewed["access_token"])
+            await request("GET", "/users/me", token=second["access_token"])
+            await request("GET", "/users/me", token=other["access_token"])
             print(
-                "PASS: Logout-all preserves other users; a later login works; refresh replay revokes its session"
+                "PASS: Removed bulk logout returns 404; refresh replay revokes only its session and later logins work"
             )
 
             limiter = LoginFailureStore(
@@ -196,10 +193,7 @@ async def check_auth_flow():
                 "PASS: Failure limit and live account status are enforced through the published API"
             )
         finally:
-            keys = [
-                *session_keys,
-                *(SessionStore._user_key(user_id) for user_id in user_ids),
-            ]
+            keys = list(session_keys)
             limiter = LoginFailureStore(redis_client, max_failures=5, lock_seconds=900)
             keys.extend(
                 limiter._key(identifier)
@@ -217,7 +211,7 @@ async def check_auth_flow():
                     await session.scalar(select(User).where(User.username.in_(names)))
                     is None
                 )
-            print("PASS: Test users, session records, indexes and counters removed")
+            print("PASS: Test users, session records and counters removed")
 
 
 async def main():

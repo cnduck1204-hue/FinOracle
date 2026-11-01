@@ -14,20 +14,12 @@ def async_redis_eval(current_context):
     current_context.cache.eval = AsyncMock(return_value=1)
 
 
-@pytest.mark.parametrize("all_sessions", [False, True])
-def test_logout_authenticates_then_revokes_without_changing_user(
-    current_context, all_sessions
-):
+def test_logout_authenticates_then_revokes_without_changing_user(current_context):
     context = current_context
     context.cache.eval.return_value = 1
     original_login = context.user.last_login_at
     assert (
-        asyncio.run(
-            logout_user(
-                context.token, context.session, context.cache, all_sessions=all_sessions
-            )
-        )
-        is None
+        asyncio.run(logout_user(context.token, context.session, context.cache)) is None
     )
     assert context.user.last_login_at == original_login
     assert context.transactions == ["commit"]
@@ -35,17 +27,12 @@ def test_logout_authenticates_then_revokes_without_changing_user(
     context.cache.eval.assert_awaited_once()
 
 
-@pytest.mark.parametrize("all_sessions", [False, True])
-def test_logout_storage_failure_never_becomes_success(current_context, all_sessions):
+def test_logout_storage_failure_never_becomes_success(current_context):
     context = current_context
     error = RedisError("injected unavailable cache")
     context.cache.eval.side_effect = error
     with pytest.raises(AppException) as caught:
-        asyncio.run(
-            logout_user(
-                context.token, context.session, context.cache, all_sessions=all_sessions
-            )
-        )
+        asyncio.run(logout_user(context.token, context.session, context.cache))
     assert (caught.value.code, caught.value.status_code) == (
         "AUTH_SERVICE_UNAVAILABLE",
         503,
@@ -66,8 +53,6 @@ def test_logout_cannot_skip_authentication(current_context, mode):
     else:
         token = "bad-token"
     with pytest.raises(AppException) as caught:
-        asyncio.run(
-            logout_user(token, context.session, context.cache, all_sessions=True)
-        )
+        asyncio.run(logout_user(token, context.session, context.cache))
     assert caught.value.status_code == (403 if mode == "disabled" else 401)
     context.cache.eval.assert_not_awaited()

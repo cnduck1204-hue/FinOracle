@@ -125,36 +125,32 @@ def test_refresh_preserves_safe_business_errors(lifecycle_client, status, code):
     assert "private-marker" not in response.text
 
 
-@pytest.mark.parametrize("path", ["logout", "logout-all"])
-def test_logout_requires_bearer_credentials(lifecycle_client, path):
-    response = lifecycle_client.client.post(f"/api/v1/auth/{path}")
+def test_logout_requires_bearer_credentials(lifecycle_client):
+    response = lifecycle_client.client.post("/api/v1/auth/logout")
     assert response.status_code == 401
     assert response.headers["WWW-Authenticate"] == "Bearer"
     lifecycle_client.logout.assert_not_awaited()
 
 
-@pytest.mark.parametrize("path", ["logout", "logout-all"])
-def test_logout_has_empty_204_response_and_correct_scope(lifecycle_client, path):
+def test_logout_has_empty_204_response(lifecycle_client):
     context = lifecycle_client
     response = context.client.post(
-        f"/api/v1/auth/{path}", headers={"Authorization": "Bearer access-marker"}
+        "/api/v1/auth/logout", headers={"Authorization": "Bearer access-marker"}
     )
     assert response.status_code == 204 and response.content == b""
     context.logout.assert_awaited_once_with(
         "access-marker",
         context.session,
         context.cache,
-        all_sessions=path == "logout-all",
     )
 
 
-@pytest.mark.parametrize("path", ["logout", "logout-all"])
-def test_logout_does_not_report_success_when_storage_fails(lifecycle_client, path):
+def test_logout_does_not_report_success_when_storage_fails(lifecycle_client):
     lifecycle_client.logout.side_effect = AppException(
         code="AUTH_SERVICE_UNAVAILABLE", message="认证服务暂时不可用", status_code=503
     )
     response = lifecycle_client.client.post(
-        f"/api/v1/auth/{path}", headers={"Authorization": "Bearer access-marker"}
+        "/api/v1/auth/logout", headers={"Authorization": "Bearer access-marker"}
     )
     assert response.status_code == 503
     assert response.json()["code"] == "AUTH_SERVICE_UNAVAILABLE"
@@ -163,7 +159,16 @@ def test_logout_does_not_report_success_when_storage_fails(lifecycle_client, pat
 def test_openapi_marks_logout_as_authenticated_but_refresh_as_public():
     schema = app.openapi()
     assert not schema["paths"]["/api/v1/auth/refresh"]["post"].get("security")
-    for path in ["logout", "logout-all"]:
-        assert {"AccessToken": []} in schema["paths"][f"/api/v1/auth/{path}"]["post"][
-            "security"
-        ]
+    assert {"AccessToken": []} in schema["paths"]["/api/v1/auth/logout"]["post"][
+        "security"
+    ]
+
+
+def test_logout_all_is_not_available(lifecycle_client):
+    response = lifecycle_client.client.post(
+        "/api/v1/auth/logout-all",
+        headers={"Authorization": "Bearer access-marker"},
+    )
+    assert response.status_code == 404
+    assert "/api/v1/auth/logout-all" not in app.openapi()["paths"]
+    lifecycle_client.logout.assert_not_awaited()

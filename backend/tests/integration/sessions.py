@@ -96,7 +96,7 @@ async def check_sessions():
         print("PASS: Expired sessions cannot be read or recreated")
     finally:
         try:
-            await redis_client.delete(*keys, store._user_key(record.user_id))
+            await redis_client.delete(*keys)
             assert await redis_client.exists(*keys) == 0
         finally:
             await redis_client.aclose()

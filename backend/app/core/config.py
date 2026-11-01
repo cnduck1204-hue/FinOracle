@@ -1,8 +1,10 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.schemas.auth import RegisterRequest
 
 
 class Settings(BaseSettings):
@@ -34,6 +36,37 @@ class Settings(BaseSettings):
     jwt_algorithm: Literal["HS256"] = "HS256"
     jwt_access_token_minutes: int = Field(default=30, ge=1)
     jwt_refresh_token_days: int = Field(default=7, ge=1)
+
+    admin_username: str | None = None
+    admin_email: str | None = None
+    admin_password: SecretStr | None = Field(default=None, repr=False)
+
+    @model_validator(mode="after")
+    def validate_admin_configuration(self) -> Self:
+        self.admin_username = self.admin_username or None
+        self.admin_email = self.admin_email or None
+        if (
+            self.admin_password is not None
+            and not self.admin_password.get_secret_value()
+        ):
+            self.admin_password = None
+        values = (self.admin_username, self.admin_email, self.admin_password)
+        if not any(value is not None for value in values):
+            return self
+        if any(value is None for value in values):
+            raise ValueError("管理员初始化配置必须同时提供用户名、邮箱和密码")
+        try:
+            payload = RegisterRequest(
+                username=self.admin_username,
+                email=self.admin_email,
+                password=self.admin_password,
+                confirm_password=self.admin_password,
+            )
+        except ValidationError as exc:
+            raise ValueError("管理员初始化配置格式不合法") from exc
+        self.admin_username = payload.username
+        self.admin_email = str(payload.email)
+        return self
 
     @field_validator("jwt_secret_key")
     @classmethod

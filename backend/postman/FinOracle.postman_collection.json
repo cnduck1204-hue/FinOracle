@@ -1,0 +1,849 @@
+{
+  "info": {
+    "name": "FinOracle backend handoff",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Local disposable-user workflow. Set allow_disposable_users=true. Optional administrator folder requires run_admin=true and private current-value credentials. Generated user IDs and passwords remain run-local. No delete API: Postman users remain for manual local cleanup; never use production data. See docs/backend-handoff.md."
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.environment.get('allow_disposable_users') !== 'true') throw new Error('Set allow_disposable_users=true for a disposable local environment');",
+          "const target = pm.variables.replaceIn('{{base_url}}');",
+          "if (!/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?\\/[A-Za-z0-9_/-]*$/.test(target)) throw new Error('Use a loopback API URL without credentials or query');"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication and profile",
+      "item": [
+        {
+          "name": "01 Register disposable user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\": \"{{generated_username}}\", \"email\": \"{{generated_email}}\", \"password\": \"{{generated_password}}\", \"confirm_password\": \"{{generated_password}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "for (const key of ['access_token', 'refresh_token', 'generated_user_id', 'admin_access_token', 'admin_target_verified']) pm.variables.unset(key);",
+                  "const suffix = pm.variables.replaceIn('{{$guid}}').replace(/-/g, '').slice(0, 20);",
+                  "pm.variables.set('generated_username', 'postman_' + suffix);",
+                  "pm.variables.set('generated_password', 'Probe9' + pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.variables.set('generated_email', 'postman_' + suffix + '@example.com');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const user = pm.response.json();",
+                  "  pm.test('Ordinary active account', () => {",
+                  "    pm.expect(user.role).to.eql('user');",
+                  "    pm.expect(user.status).to.eql('active');",
+                  "    pm.expect(user.username).to.eql(pm.variables.get('generated_username'));",
+                  "  });",
+                  "  pm.variables.set('generated_user_id', user.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02 Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"identifier\": \"{{generated_username}}\", \"password\": \"{{generated_password}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  pm.variables.set('access_token', data.access_token);",
+                  "  pm.variables.set('refresh_token', data.refresh_token);",
+                  "  pm.test('Bearer token pair', () => {",
+                  "    pm.expect(data.token_type).to.eql('bearer');",
+                  "    pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "    pm.expect(data.refresh_token).to.be.a('string').and.not.empty;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03 Read me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}/users/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test('Public user only', () => {",
+                  "  const user = pm.response.json();",
+                  "  pm.expect(user.id).to.eql(pm.variables.get('generated_user_id'));",
+                  "  pm.expect(user).not.to.have.property('password_hash');",
+                  "  pm.expect(user).not.to.have.property('password');",
+                  "  pm.expect(user).not.to.have.property('auth_version');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04 Patch my email",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}/users/me",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"{{generated_username}}_updated@example.com\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test('Public user only', () => {",
+                  "  const user = pm.response.json();",
+                  "  pm.expect(user.id).to.eql(pm.variables.get('generated_user_id'));",
+                  "  pm.expect(user).not.to.have.property('password_hash');",
+                  "  pm.expect(user).not.to.have.property('password');",
+                  "  pm.expect(user).not.to.have.property('auth_version');",
+                  "});",
+                  "pm.test('Email updated', () => pm.expect(pm.response.json().email).to.eql(pm.variables.get('generated_username') + '_updated@example.com'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05 Reject privilege escalation",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}/users/me",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"role\": \"admin\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 422\", () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06 Refresh and replace both tokens",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/refresh",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"refresh_token\": \"{{refresh_token}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  pm.variables.set('access_token', data.access_token);",
+                  "  pm.variables.set('refresh_token', data.refresh_token);",
+                  "  pm.test('Bearer token pair', () => {",
+                  "    pm.expect(data.token_type).to.eql('bearer');",
+                  "    pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "    pm.expect(data.refresh_token).to.be.a('string').and.not.empty;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07 Logout current session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "08 Logged out access rejected",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}/users/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "09 Logged out refresh rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/refresh",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"refresh_token\": \"{{refresh_token}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Optional administrator checks",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.environment.get('run_admin') !== 'true') {",
+              "  pm.execution.skipRequest();",
+              "} else if (!pm.environment.get('admin_identifier') || !pm.environment.get('admin_password')) {",
+              "  throw new Error('Provide local administrator credentials for the optional admin folder');",
+              "} else if (!pm.variables.get('generated_user_id') || !/^postman_[0-9a-f]{20}$/.test(pm.variables.get('generated_username') || '')) {",
+              "  throw new Error('Run registration first; administrator actions require the current generated user');",
+              "}"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "10 Administrator login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"identifier\": \"{{admin_identifier}}\", \"password\": \"{{admin_password}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  pm.variables.set('admin_access_token', data.access_token);",
+                  "",
+                  "  pm.test('Bearer token pair', () => {",
+                  "    pm.expect(data.token_type).to.eql('bearer');",
+                  "    pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "    pm.expect(data.refresh_token).to.be.a('string').and.not.empty;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11 List generated user",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_access_token}}"
+              }
+            ],
+            "url": "{{base_url}}/admin/users?page=1&page_size=20&q={{generated_username}}&role=user&status=active"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test('Paged result contains generated user', () => {",
+                  "  const page = pm.response.json();",
+                  "  pm.expect(page.page).to.eql(1);",
+                  "  pm.expect(page.page_size).to.eql(20);",
+                  "  pm.expect(page.items.some(user => user.id === pm.variables.get('generated_user_id'))).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12 Verify generated user detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_access_token}}"
+              }
+            ],
+            "url": "{{base_url}}/admin/users/{{generated_user_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test('Public user only', () => {",
+                  "  const user = pm.response.json();",
+                  "  pm.expect(user.id).to.eql(pm.variables.get('generated_user_id'));",
+                  "  pm.expect(user).not.to.have.property('password_hash');",
+                  "  pm.expect(user).not.to.have.property('password');",
+                  "  pm.expect(user).not.to.have.property('auth_version');",
+                  "});",
+                  "const user = pm.response.json();",
+                  "if (pm.response.code === 200 && user.id === pm.variables.get('generated_user_id') && user.username === pm.variables.get('generated_username') && user.role === 'user') pm.variables.set('admin_target_verified', user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "13 Fresh disposable user login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"identifier\": \"{{generated_username}}\", \"password\": \"{{generated_password}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  pm.variables.set('access_token', data.access_token);",
+                  "  pm.variables.set('refresh_token', data.refresh_token);",
+                  "  pm.test('Bearer token pair', () => {",
+                  "    pm.expect(data.token_type).to.eql('bearer');",
+                  "    pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "    pm.expect(data.refresh_token).to.be.a('string').and.not.empty;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "14 Disable generated user only",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_access_token}}"
+              }
+            ],
+            "url": "{{base_url}}/admin/users/{{generated_user_id}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\": \"disabled\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.environment.get('run_admin') === 'true') {",
+                  "if (pm.variables.get('admin_target_verified') !== pm.variables.get('generated_user_id')) throw new Error('Read and verify the generated ordinary user before changing status');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test('Public user only', () => {",
+                  "  const user = pm.response.json();",
+                  "  pm.expect(user.id).to.eql(pm.variables.get('generated_user_id'));",
+                  "  pm.expect(user).not.to.have.property('password_hash');",
+                  "  pm.expect(user).not.to.have.property('password');",
+                  "  pm.expect(user).not.to.have.property('auth_version');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15 Disabled access rejected",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}/users/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "16 Disabled refresh rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/refresh",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"refresh_token\": \"{{refresh_token}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "17 Enable generated user only",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_access_token}}"
+              }
+            ],
+            "url": "{{base_url}}/admin/users/{{generated_user_id}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\": \"active\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.environment.get('run_admin') === 'true') {",
+                  "if (pm.variables.get('admin_target_verified') !== pm.variables.get('generated_user_id')) throw new Error('Read and verify the generated ordinary user before changing status');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test('Public user only', () => {",
+                  "  const user = pm.response.json();",
+                  "  pm.expect(user.id).to.eql(pm.variables.get('generated_user_id'));",
+                  "  pm.expect(user).not.to.have.property('password_hash');",
+                  "  pm.expect(user).not.to.have.property('password');",
+                  "  pm.expect(user).not.to.have.property('auth_version');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "18 Old access remains invalid",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}/users/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "19 Old refresh remains invalid",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/refresh",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"refresh_token\": \"{{refresh_token}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "20 Fresh login after enable",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"identifier\": \"{{generated_username}}\", \"password\": \"{{generated_password}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  pm.variables.set('access_token', data.access_token);",
+                  "  pm.variables.set('refresh_token', data.refresh_token);",
+                  "  pm.test('Bearer token pair', () => {",
+                  "    pm.expect(data.token_type).to.eql('bearer');",
+                  "    pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "    pm.expect(data.refresh_token).to.be.a('string').and.not.empty;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "21 Fresh user logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "22 Administrator logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_access_token}}"
+              }
+            ],
+            "url": "{{base_url}}/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));",
+                  "for (const key of ['generated_password', 'access_token', 'refresh_token', 'admin_access_token']) pm.variables.unset(key);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

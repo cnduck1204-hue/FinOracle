@@ -152,7 +152,6 @@ async def check_login():
             )
     finally:
         keys = [f"finoracle:v2:auth:session:{record.id}" for record in records]
-        keys.extend({SessionStore._user_key(record.user_id) for record in records})
         limiter = LoginFailureStore(redis_client, max_failures=5, lock_seconds=900)
         keys.extend([limiter._key(username), limiter._key(email)])
         try:

@@ -21,6 +21,7 @@ def session_context(monkeypatch):
         "created_at": 100,
         "expires_at": 200,
         "revoked": False,
+        "auth_version": 0,
     }
     cache = SimpleNamespace(
         set=AsyncMock(return_value=True),
@@ -89,14 +90,13 @@ def test_create_preserves_expiry_and_does_not_overwrite_existing_sessions(
     assert asyncio.run(context.store.create(record)) is None
     context.cache.eval.assert_awaited_once()
     call = context.cache.eval.await_args
-    assert call.args[:4] == (
+    assert call.args[:3] == (
         sessions._CREATE_SCRIPT,
-        2,
+        1,
         f"finoracle:v2:auth:session:{record.id}",
-        f"finoracle:v2:auth:user-sessions:{record.user_id}",
     )
-    assert json.loads(call.args[4]) == context.payload
-    assert call.args[5:] == (200, str(record.id))
+    assert json.loads(call.args[3]) == context.payload
+    assert call.args[4:] == (200,)
 
 
 def test_duplicate_session_id_is_not_silently_accepted(session_context):
@@ -210,9 +210,8 @@ def test_rotate_uses_one_script_with_bound_identity_and_absolute_expiry(
     assert result == expected
     context.cache.eval.assert_awaited_once_with(
         sessions._ROTATE_SCRIPT,
-        2,
+        1,
         f"finoracle:v2:auth:session:{arguments['session_id']}",
-        f"finoracle:v2:auth:user-sessions:{arguments['user_id']}",
         str(arguments["session_id"]),
         str(arguments["user_id"]),
         str(arguments["expected_refresh_jti"]),

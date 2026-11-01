@@ -6,9 +6,7 @@ from redis.asyncio import Redis
 
 from app.schemas.session import SessionRecord
 
-# v1 records have no user index. A new namespace prevents logout-all missing them.
 _SESSION_PREFIX = "finoracle:v2:auth:session:"
-_USER_INDEX_PREFIX = "finoracle:v2:auth:user-sessions:"
 
 _CREATE_SCRIPT = """
 if redis.call('EXISTS', KEYS[1]) == 1 then
@@ -18,32 +16,8 @@ local now = tonumber(redis.call('TIME')[1])
 if tonumber(ARGV[2]) <= now then
     return -1
 end
-redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', now)
-redis.call('ZADD', KEYS[2], ARGV[2], ARGV[3])
 redis.call('SET', KEYS[1], ARGV[1], 'EXAT', ARGV[2])
-local last = redis.call('ZRANGE', KEYS[2], -1, -1, 'WITHSCORES')
-redis.call('EXPIREAT', KEYS[2], last[2])
 return 1
-"""
-
-_REVOKE_ALL_SCRIPT = """
-local now = tonumber(redis.call('TIME')[1])
-local ids = redis.call('ZRANGEBYSCORE', KEYS[1], now, '+inf')
-local count = 0
-for _, id in ipairs(ids) do
-    local key = ARGV[1] .. id
-    local raw = redis.call('GET', key)
-    if raw then
-        local data = cjson.decode(raw)
-        if data.user_id == ARGV[2] and data.id == id and data.revoked == false then
-            data.revoked = true
-            redis.call('SET', key, cjson.encode(data), 'KEEPTTL')
-            count = count + 1
-        end
-    end
-end
-redis.call('DEL', KEYS[1])
-return count
 """
 
 _REVOKE_SCRIPT = """
@@ -98,12 +72,6 @@ end
 data.refresh_jti = ARGV[4]
 data.expires_at = new_expires_at
 
--- Update the index before the record: an index type error cannot consume a token.
-redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', now)
-redis.call('ZADD', KEYS[2], ARGV[5], ARGV[1])
-local last = redis.call('ZRANGE', KEYS[2], -1, -1, 'WITHSCORES')
-redis.call('EXPIREAT', KEYS[2], last[2])
-
 redis.call(
     'SET',
     KEYS[1],
@@ -124,23 +92,16 @@ class SessionStore:
     def _key(session_id: UUID) -> str:
         return f"{_SESSION_PREFIX}{session_id}"
 
-    @staticmethod
-    def _user_key(user_id: UUID) -> str:
-        return f"{_USER_INDEX_PREFIX}{user_id}"
-
     async def create(self, record: SessionRecord) -> None:
         if record.expires_at <= int(time()):
             raise ValueError("不能创建已过期的会话")
 
-        # A single script makes the session and its user index visible together.
         created = await self.cache.eval(
             _CREATE_SCRIPT,
-            2,
+            1,
             self._key(record.id),
-            self._user_key(record.user_id),
             record.model_dump_json(),
             record.expires_at,
-            str(record.id),
         )
 
         if int(created) == -1:
@@ -175,22 +136,6 @@ class SessionStore:
         )
         return bool(result)
 
-    async def revoke_all(self, user_id: UUID) -> int:
-        """Revoke indexed sessions atomically; later logins start fresh sessions.
-
-        The Lua script derives session keys from our own index. This deployment
-        uses standalone Redis; Redis Cluster would need a different key layout.
-        """
-        return int(
-            await self.cache.eval(
-                _REVOKE_ALL_SCRIPT,
-                1,
-                self._user_key(user_id),
-                _SESSION_PREFIX,
-                str(user_id),
-            )
-        )
-
     async def rotate(
         self,
         *,
@@ -208,9 +153,8 @@ class SessionStore:
 
         result = await self.cache.eval(
             _ROTATE_SCRIPT,
-            2,
+            1,
             self._key(session_id),
-            self._user_key(user_id),
             str(session_id),
             str(user_id),
             str(expected_refresh_jti),

@@ -16,6 +16,7 @@ class SessionRecord(BaseModel):
     created_at: int = Field(strict=True, ge=0)
     expires_at: int = Field(strict=True, ge=0)
     revoked: bool = Field(default=False, strict=True)
+    auth_version: int = Field(default=0, strict=True, ge=0)
 
     @model_validator(mode="after")
     def validate_lifetime(self) -> Self:

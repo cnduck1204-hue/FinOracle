@@ -61,4 +61,9 @@ async def get_current_user(
             status_code=403,
         )
 
+    if record.auth_version != (user.auth_version or 0):
+        raise AppException(
+            code="AUTH_INVALID_TOKEN", message="令牌无效或已过期", status_code=401
+        )
+
     return user

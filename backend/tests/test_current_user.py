@@ -112,6 +112,14 @@ def test_valid_access_returns_latest_database_user_and_role(current_context):
     assert not context.session.in_transaction()
 
 
+def test_reenabled_account_rejects_access_from_before_disabling(current_context):
+    context = current_context
+    context.user.auth_version = 1
+    with pytest.raises(AppException) as caught:
+        resolve(context)
+    assert (caught.value.code, caught.value.status_code) == ("AUTH_INVALID_TOKEN", 401)
+
+
 @pytest.mark.parametrize("mode", ["missing", "revoked", "other-user", "expired"])
 def test_invalid_session_is_rejected_before_loading_user(current_context, mode):
     context = current_context

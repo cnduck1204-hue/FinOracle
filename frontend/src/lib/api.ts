@@ -1,4 +1,4 @@
-import type { RegisterInput, SessionSnapshot, TokenPair, User } from './types'
+import type { ProfileInput, RegisterInput, SessionSnapshot, TokenPair, User } from './types'
 import { browserLockRequest, TabLease, type LockRequest } from './tab-lease'
 
 export const SESSION_KEY = 'finoracle.refresh.v1'
@@ -318,15 +318,28 @@ export class AuthClient {
     return user
   }
 
-  async logout(allSessions = false): Promise<void> {
+  async updateProfile(input: Partial<ProfileInput>): Promise<User> {
+    const generation = this.generation
+    const user = await this.protectedRequest<unknown>('/users/me', {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    })
+    this.assertCurrent(generation)
+    if (!isUser(user))
+      throw new ApiError('账号资料未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    this.publish({ user })
+    return user
+  }
+
+  async logout(): Promise<void> {
     const generation = this.generation
     // Wait for an already-running refresh so logout uses its current access token.
     if (this.refreshFlight) await this.refreshFlight
-    await this.protectedRequest<void>(allSessions ? '/auth/logout-all' : '/auth/logout', {
+    await this.protectedRequest<void>('/auth/logout', {
       method: 'POST',
     })
     this.assertCurrent(generation)
-    this.forgetSession(allSessions ? '已退出全部会话。' : '已退出当前会话。')
+    this.forgetSession('已退出登录。')
   }
 
   dispose() {

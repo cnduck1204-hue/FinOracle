@@ -71,6 +71,9 @@ services:
       JWT_ALGORITHM: "${JWT_ALGORITHM:-HS256}"
       JWT_ACCESS_TOKEN_MINUTES: "${JWT_ACCESS_TOKEN_MINUTES:-30}"
       JWT_REFRESH_TOKEN_DAYS: "${JWT_REFRESH_TOKEN_DAYS:-7}"
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-}"
+      ADMIN_EMAIL: "${ADMIN_EMAIL:-}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
     depends_on:
       mysql:
         condition: service_healthy

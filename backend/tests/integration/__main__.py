@@ -14,8 +14,9 @@ MODULES = (
     "login_identity",
     "sessions",
     "session_rotation",
-    "session_index",
     "auth_flow",
+    "profile",
+    "admin",
 )
 
 

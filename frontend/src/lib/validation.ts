@@ -1,13 +1,18 @@
-import type { RegisterInput } from './types'
+import type { ProfileInput, RegisterInput } from './types'
 
 export type FieldErrors = Partial<Record<keyof RegisterInput | 'identifier', string>>
 
-export function validateRegistration(input: RegisterInput): FieldErrors {
-  const errors: FieldErrors = {}
+export function validateProfile(input: ProfileInput): Pick<FieldErrors, 'username' | 'email'> {
+  const errors: Pick<FieldErrors, 'username' | 'email'> = {}
   if (!/^[A-Za-z0-9_]{3,32}$/.test(input.username.trim()))
     errors.username = '请输入 3–32 位字母、数字或下划线。'
   if (input.email.trim().length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim()))
     errors.email = '请输入有效的邮箱地址。'
+  return errors
+}
+
+export function validateRegistration(input: RegisterInput): FieldErrors {
+  const errors: FieldErrors = validateProfile(input)
   if (
     input.password.length < 8 ||
     input.password.length > 128 ||

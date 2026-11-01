@@ -1,6 +1,9 @@
 @import '@fontsource-variable/saira';
 
 :root {
+  --ui-scale: 0.8;
+  --viewport-height: calc(100svh / var(--ui-scale));
+  zoom: var(--ui-scale);
   font-family: 'Saira Variable', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   color: #20251f;
   background: #f2f3ed;
@@ -178,13 +181,6 @@ svg {
 .button-dark:hover:not(:disabled) {
   background: #3c4435;
 }
-.button-secondary {
-  background: var(--panel);
-  color: var(--ink);
-}
-.button-secondary:hover:not(:disabled) {
-  background: #dce1d4;
-}
 .icon-button {
   width: 42px;
   height: 42px;
@@ -268,7 +264,7 @@ svg {
 /* Authentication uses the same architectural grid as the workspace. */
 .auth-frame {
   margin: 20px;
-  min-height: calc(100svh - 40px);
+  min-height: calc(var(--viewport-height) - 40px);
   border: 1px solid var(--rule);
   background: var(--paper);
   display: flex;
@@ -709,7 +705,7 @@ svg {
 }
 .app-main {
   margin-left: 230px;
-  min-height: 100svh;
+  min-height: var(--viewport-height);
   padding-top: 73px;
   display: flex;
   flex-direction: column;
@@ -1037,6 +1033,25 @@ svg {
   align-items: center;
   gap: 8px;
 }
+.profile-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.profile-heading h2 {
+  margin-bottom: 0;
+}
+.profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 22px;
+}
+.profile-section .notice {
+  margin-top: 16px;
+}
 .profile-row {
   display: grid;
   grid-template-columns: 105px 1fr;
@@ -1142,14 +1157,6 @@ svg {
   min-height: 43px;
   font-size: 11px;
 }
-.session-panel .session-secondary {
-  background: #35402c;
-  color: #e3e8dd;
-  margin-top: 11px;
-}
-.session-panel .session-secondary:hover {
-  background: #47553b;
-}
 .session-panel .notice {
   margin-top: 15px;
 }
@@ -1182,7 +1189,7 @@ svg {
   padding: 6px 10px;
 }
 .empty-page {
-  min-height: 65svh;
+  min-height: calc(var(--viewport-height) * 0.65);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1224,7 +1231,7 @@ svg {
   font-size: 11px;
 }
 .recovery-page {
-  min-height: 100svh;
+  min-height: var(--viewport-height);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1255,55 +1262,6 @@ svg {
 .recovery-page .eyebrow {
   margin-top: 26px;
 }
-.confirm-dialog {
-  padding: 0;
-  border: 1px solid var(--ink);
-  width: min(440px, calc(100vw - 36px));
-  background: var(--paper);
-  color: var(--ink);
-  box-shadow: 12px 12px 0 #20251f14;
-}
-.confirm-dialog::backdrop {
-  background: #20251f66;
-  backdrop-filter: blur(3px);
-}
-.dialog-header {
-  padding: 20px 24px;
-  background: var(--panel);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--rule);
-}
-.dialog-header .eyebrow {
-  color: var(--ink);
-}
-.dialog-body {
-  padding: 27px 24px 30px;
-}
-.dialog-body h2 {
-  font-size: 23px;
-  margin: 0 0 14px;
-  font-weight: 550;
-}
-.dialog-body p {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 2;
-}
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 0 24px 24px;
-}
-.dialog-actions .cut-button {
-  font-size: 11px;
-  min-height: 43px;
-}
-.confirm-dialog .notice {
-  margin: 0 24px 20px;
-}
 @keyframes enter {
   from {
     opacity: 0;
@@ -1319,7 +1277,7 @@ svg {
   .auth-frame {
     max-width: 1540px;
     margin: 28px auto;
-    min-height: calc(100svh - 56px);
+    min-height: calc(var(--viewport-height) - 56px);
   }
   .auth-content {
     min-height: 700px;
@@ -1461,7 +1419,7 @@ svg {
 @media (max-width: 600px) {
   .auth-frame {
     margin: 10px;
-    min-height: calc(100svh - 20px);
+    min-height: calc(var(--viewport-height) - 20px);
   }
   .auth-header {
     height: 72px;
@@ -1700,7 +1658,7 @@ svg {
     padding: 26px;
   }
   .empty-page {
-    min-height: 65svh;
+    min-height: calc(var(--viewport-height) * 0.65);
   }
   .empty-page h1 {
     font-size: 25px;

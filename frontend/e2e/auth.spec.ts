@@ -44,7 +44,7 @@ test.afterAll(() => {
   )
 })
 
-test('real registration, login, one-flight restore, draft and both logout flows', async ({
+test('real registration, login, one-flight restore, draft, logout and sign-in again', async ({
   page,
 }) => {
   const errors: string[] = []
@@ -89,16 +89,13 @@ test('real registration, login, one-flight restore, draft and both logout flows'
     fullPage: true,
     animations: 'disabled',
   })
-  await page.getByRole('button', { name: '退出当前会话', exact: true }).click()
+  await expect(page.getByRole('button', { name: /退出.*(全部|所有)/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '退出登录', exact: true })).toHaveCount(1)
+  await page.getByRole('button', { name: '退出登录', exact: true }).click()
   await expect(page.getByRole('heading', { name: '欢迎回来。' })).toBeVisible()
   await login(page, name, 'account')
   await page.getByRole('link', { name: '打开我的账号', exact: true }).click()
-  await page.getByRole('button', { name: '退出全部会话', exact: true }).click()
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await page.getByRole('button', { name: '暂不退出', exact: true }).click()
-  await expect(page.getByRole('dialog')).not.toBeVisible()
-  await page.getByRole('button', { name: '退出全部会话', exact: true }).click()
-  await page.getByRole('button', { name: '确认全部退出', exact: true }).click()
+  await page.getByRole('button', { name: '退出登录', exact: true }).click()
   await expect(page.getByRole('heading', { name: '欢迎回来。' })).toBeVisible()
   expect(errors).toEqual([])
 })
@@ -116,6 +113,78 @@ test('validation and real incorrect-password response stay on the login page', a
   await page.getByRole('button', { name: '进入工作台' }).click()
   await expect(page.getByRole('alert')).toContainText('账号或密码错误')
   await expect(page).toHaveURL(/\/login$/)
+})
+
+for (const mobile of [false, true]) {
+  test(`profile edits persist and update navigation on ${mobile ? 'mobile' : 'desktop'}`, async ({
+    page,
+    request,
+  }) => {
+    if (mobile) await page.setViewportSize({ width: 375, height: 812 })
+    const name = await seed(request)
+    const updated = username()
+    await page.goto('/login')
+    await login(page, name)
+    await page.getByRole('link', { name: '打开我的账号', exact: true }).click()
+    await page.getByRole('button', { name: '编辑资料', exact: true }).click()
+    await expect(page.getByLabel('用户名', { exact: true })).toHaveValue(name)
+    await page.getByLabel('用户名', { exact: true }).fill(updated)
+    await page.getByLabel('邮箱', { exact: true }).fill(`${updated}@example.com`)
+    await page.getByRole('button', { name: '保存修改', exact: true }).click()
+    await expect(page.getByRole('status')).toContainText('个人资料已更新')
+    await expect(page.getByText(`${updated}@example.com`, { exact: true })).toBeVisible()
+    await expect(page.locator('.sidebar-footer strong')).toHaveText(updated)
+    await page.reload()
+    await expect(page.getByText(`${updated}@example.com`, { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '编辑资料', exact: true }).click()
+    await page.getByLabel('用户名', { exact: true }).fill('cancelled_name')
+    await page.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(page.getByText('cancelled_name', { exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: '编辑资料', exact: true }).click()
+    await expect(page.getByLabel('用户名', { exact: true })).toHaveValue(updated)
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true)
+    await page.screenshot({
+      path: `test-results/preview-profile-edit-${mobile ? 'mobile' : 'desktop'}.png`,
+      fullPage: true,
+    })
+    await page.getByRole('button', { name: '取消', exact: true }).click()
+    await page.getByRole('button', { name: '退出登录', exact: true }).click()
+    await login(page, `${updated}@example.com`, 'account')
+    await expect(page.getByText(`${updated}@example.com`, { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '退出登录', exact: true }).click()
+  })
+}
+
+test('profile validation and duplicate errors preserve the editor and saved profile', async ({
+  page,
+  request,
+}) => {
+  const name = await seed(request)
+  const taken = await seed(request)
+  await page.goto('/login')
+  await login(page, name)
+  await page.getByRole('link', { name: '打开我的账号', exact: true }).click()
+  await page.getByRole('button', { name: '编辑资料', exact: true }).click()
+  await expect(page.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled()
+  await page.getByLabel('用户名', { exact: true }).fill('bad-name')
+  await page.getByLabel('邮箱', { exact: true }).fill('bad')
+  await page.getByRole('button', { name: '保存修改', exact: true }).click()
+  await expect(page.getByLabel('用户名', { exact: true })).toHaveAttribute('aria-invalid', 'true')
+  await expect(page.getByLabel('邮箱', { exact: true })).toHaveAttribute('aria-invalid', 'true')
+  await page.getByLabel('用户名', { exact: true }).fill(taken)
+  await page.getByLabel('邮箱', { exact: true }).fill(`${name}@example.com`)
+  await page.getByRole('button', { name: '保存修改', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('用户名已存在')
+  await page.getByLabel('用户名', { exact: true }).fill(name)
+  await page.getByLabel('邮箱', { exact: true }).fill(`${taken}@example.com`)
+  await page.getByRole('button', { name: '保存修改', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('邮箱已存在')
+  await expect(page.locator('.sidebar-footer strong')).toHaveText(name)
+  await page.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(page.getByText(`${name}@example.com`, { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '退出登录', exact: true }).click()
 })
 
 test('mobile layouts, navigation and account operations have no horizontal overflow', async ({
@@ -151,7 +220,7 @@ test('mobile layouts, navigation and account operations have no horizontal overf
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   )
-  await page.getByRole('button', { name: '退出当前会话', exact: true }).click()
+  await page.getByRole('button', { name: '退出登录', exact: true }).click()
   await expect(page.getByRole('heading', { name: '欢迎回来。' })).toBeVisible()
 })
 
@@ -174,6 +243,6 @@ test('a copied tab requests a separate login without revoking the original sessi
   await page.reload()
   await expect(page.getByLabel('你想了解什么？')).toBeVisible()
   await page.getByRole('link', { name: '打开我的账号', exact: true }).click()
-  await page.getByRole('button', { name: '退出当前会话', exact: true }).click()
+  await page.getByRole('button', { name: '退出登录', exact: true }).click()
   await expect(page.getByRole('heading', { name: '欢迎回来。' })).toBeVisible()
 })

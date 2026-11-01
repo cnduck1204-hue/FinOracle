@@ -1,0 +1,84 @@
+{
+  "measured_at": "2026-10-28T10:20:09.841204+00:00",
+  "environment": "windows-docker-desktop-local",
+  "platform": "Windows-10-10.0.26200-SP0",
+  "python": "3.11.15",
+  "base_url": "http://127.0.0.1:8001/api/v1",
+  "concurrency": 1,
+  "warmup_per_endpoint": 3,
+  "disposable_users_created": 23,
+  "goal_p95_ms": 500,
+  "threshold_p95_ms": 500.0,
+  "endpoints": {
+    "admin_detail": {
+      "samples": 20,
+      "p50_ms": 7.31,
+      "p95_ms": 9.124,
+      "within_goal": true,
+      "within_threshold": true
+    },
+    "admin_disable": {
+      "samples": 20,
+      "p50_ms": 35.928,
+      "p95_ms": 44.183,
+      "within_goal": true,
+      "within_threshold": true
+    },
+    "admin_enable": {
+      "samples": 20,
+      "p50_ms": 33.047,
+      "p95_ms": 44.545,
+      "within_goal": true,
+      "within_threshold": true
+    },
+    "admin_list": {
+      "samples": 20,
+      "p50_ms": 9.044,
+      "p95_ms": 10.119,
+      "within_goal": true,
+      "within_threshold": true
+    },
+    "login": {
+      "samples": 20,
+      "p50_ms": 83.904,
+      "p95_ms": 98.332,
+      "within_goal": true,
+      "within_threshold": true
+    },
+    "logout": {
+      "samples": 20,
+      "p50_ms": 6.047,
+      "p95_ms": 6.838,
+      "within_goal": true,
+      "within_threshold": true
+    },
+    "me": {
+      "samples": 20,
+      "p50_ms": 5.86,
+      "p95_ms": 6.817,
+      "within_goal": true,
+      "within_threshold": true
+    },
+    "patch_me": {
+      "samples": 20,
+      "p50_ms": 36.86,
+      "p95_ms": 46.185,
+      "within_goal": true,
+      "within_threshold": true
+    },
+    "refresh": {
+      "samples": 20,
+      "p50_ms": 7.077,
+      "p95_ms": 8.525,
+      "within_goal": true,
+      "within_threshold": true
+    },
+    "register": {
+      "samples": 20,
+      "p50_ms": 77.132,
+      "p95_ms": 92.888,
+      "within_goal": true,
+      "within_threshold": true
+    }
+  }
+}

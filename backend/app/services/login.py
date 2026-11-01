@@ -86,6 +86,7 @@ async def login_user(
                 refresh_jti=refresh_claims.jti,
                 expires_at=refresh_claims.exp,
                 created_at=refresh_claims.iat,
+                auth_version=user.auth_version or 0,
             )
 
             user.last_login_at = utc_now()

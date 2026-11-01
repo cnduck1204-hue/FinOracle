@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Enum, String, UniqueConstraint, Uuid
+from sqlalchemy import Enum, Integer, String, UniqueConstraint, Uuid
 from sqlalchemy.dialects.mysql import DATETIME
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,6 +30,8 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(32))
     email: Mapped[str] = mapped_column(String(254))
     password_hash: Mapped[str] = mapped_column(String(255))
+
+    auth_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     role: Mapped[str] = mapped_column(
         Enum(

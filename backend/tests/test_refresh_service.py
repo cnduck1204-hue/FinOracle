@@ -104,6 +104,15 @@ def call_refresh(context, token=None):
     )
 
 
+def test_reenabled_account_rejects_refresh_from_before_disabling(refresh_context):
+    context = refresh_context
+    context.user.auth_version = 1
+    with pytest.raises(AppException) as caught:
+        call_refresh(context)
+    assert (caught.value.code, caught.value.status_code) == ("AUTH_INVALID_TOKEN", 401)
+    context.store.rotate.assert_not_awaited()
+
+
 def test_refresh_returns_new_pair_after_db_commit_and_session_rotation(refresh_context):
     context = refresh_context
     times = (
