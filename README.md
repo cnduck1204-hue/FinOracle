@@ -52,6 +52,6 @@ based_knowledge/       数据采集模块、原始资料、解析结果与联调
 
 数据采集模块的运行、校验和数据交接方式见 [数据采集说明](based_knowledge/README.md)。
 
-[后端说明](backend/README.md) 包含接口、配置、运行和验证命令；[后端 API 交接](docs/backend-handoff.md) 包含前端契约、Postman 与性能探针说明；[后端基础需求](docs/superpowers/specs/2026-09-20-backend-foundation-prd.md) 保留阶段背景及范围调整。2026-10-28 交付范围为 M1–M4 后端 API、测试与交接资料；前端现已接入认证、本人资料查询与编辑，管理员页面由前端团队继续接入。RAG、密码修改/找回、全部会话退出不在本次范围。
+[后端说明](backend/README.md) 包含接口、配置、运行和验证命令；[后端 API 交接](docs/backend-handoff.md) 包含前端契约、Postman 与性能探针说明；[后端基础需求](docs/superpowers/specs/2026-09-20-backend-foundation-prd.md) 保留阶段背景及范围调整。2026-10-28 交付范围为 M1–M4 后端 API、测试与交接资料；前端现已接入认证、本人资料查询与编辑和管理员用户管理（列表、搜索筛选、详情、启用/禁用）。RAG、密码修改/找回、全部会话退出不在本次范围。
 
 Redis 会话使用 `finoracle:v2:auth:*` 命名空间。Compose 仅供本地开发，不作为生产部署配置。

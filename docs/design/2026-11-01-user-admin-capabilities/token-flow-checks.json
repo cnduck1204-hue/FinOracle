@@ -1,0 +1,16 @@
+{
+  "nativeElements": 334,
+  "originalElementsPreserved": 135,
+  "newArrows": 27,
+  "unrelatedNodeCrossings": [],
+  "pythonCodeAnchorsVerified": 18,
+  "jwtClaimsVerified": [
+    "exp",
+    "iat",
+    "jti",
+    "role",
+    "sid",
+    "sub",
+    "type"
+  ]
+}

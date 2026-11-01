@@ -1,9 +1,10 @@
-import { LoaderCircle, RotateCw, WifiOff } from 'lucide-react'
-import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
+import { LoaderCircle, RotateCw, ShieldCheck, WifiOff } from 'lucide-react'
+import { Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './auth/AuthProvider'
 import { AppLayout } from './components/AppLayout'
 import { Brand } from './components/Brand'
 import { AccountPage } from './pages/AccountPage'
+import { AdminUsersPage } from './pages/AdminUsersPage'
 import { AuthPage } from './pages/AuthPage'
 import { ComingSoonPage } from './pages/ComingSoonPage'
 import { WorkspacePage } from './pages/WorkspacePage'
@@ -15,6 +16,22 @@ function RequireSession() {
     <Outlet />
   ) : (
     <Navigate to="/login" replace state={{ from: location.pathname }} />
+  )
+}
+
+function RequireAdmin() {
+  const { user } = useAuth()
+  return user?.role === 'admin' ? (
+    <Outlet />
+  ) : (
+    <section className="empty-page">
+      <ShieldCheck size={30} strokeWidth={1.4} aria-hidden="true" />
+      <h1>没有访问权限</h1>
+      <p>用户管理仅向管理员开放。</p>
+      <Link to="/chat" className="cut-button button-dark">
+        返回工作台
+      </Link>
+    </section>
   )
 }
 
@@ -53,6 +70,9 @@ export function App() {
         <Route element={<AppLayout />}>
           <Route path="/chat" element={<WorkspacePage />} />
           <Route path="/account" element={<AccountPage />} />
+          <Route element={<RequireAdmin />}>
+            <Route path="/admin/users" element={<AdminUsersPage />} />
+          </Route>
           <Route path="/library" element={<ComingSoonPage module="library" />} />
           <Route path="/search" element={<ComingSoonPage module="search" />} />
           <Route path="/history" element={<ComingSoonPage module="history" />} />

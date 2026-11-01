@@ -35,6 +35,90 @@ function storage() {
 }
 
 describe('authentication client', () => {
+  it('encodes administrator list filters and keeps the administrator identity', async () => {
+    const administrator = { ...user, role: 'admin' }
+    const client = new AuthClient({
+      storage: storage(),
+      fetcher: vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input).endsWith('/auth/login')) return json({ ...pair(), user: administrator })
+        const url = new URL(String(input), 'http://local')
+        expect(url.pathname).toBe('/api/v1/admin/users')
+        expect(Object.fromEntries(url.searchParams)).toEqual({
+          page: '2',
+          page_size: '10',
+          q: 'a+b@example.com',
+          role: 'user',
+          status: 'disabled',
+        })
+        expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer access-1')
+        return json({ items: [user], total: 11, page: 2, page_size: 10 })
+      }),
+    })
+    await client.login('admin', 'Password123')
+    const result = await client.listUsers({
+      page: 2,
+      page_size: 10,
+      q: ' a+b@example.com ',
+      role: 'user',
+      status: 'disabled',
+    })
+    expect(result.items[0].username).toBe('alice')
+    expect(client.getSnapshot().user).toEqual(administrator)
+  })
+
+  it.each([
+    null,
+    { items: null, total: 0, page: 1, page_size: 20 },
+    { items: [{ username: 'incomplete' }], total: 1, page: 1, page_size: 20 },
+    { items: [], total: -1, page: 1, page_size: 20 },
+    { items: [], total: 0, page: 0, page_size: 20 },
+    { items: [], total: 0, page: 1, page_size: 101 },
+  ])('rejects a malformed administrator user page: %j', async (body) => {
+    const client = new AuthClient({
+      storage: storage(),
+      fetcher: vi.fn(async (input: string | URL | Request) =>
+        String(input).endsWith('/auth/login') ? json(pair()) : json(body),
+      ),
+    })
+    await client.login('alice', 'Password123')
+    await expect(client.listUsers()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  })
+
+  it('fetches and changes another user without replacing the signed-in profile', async () => {
+    const administrator = { ...user, id: 'admin-id', role: 'admin' }
+    const client = new AuthClient({
+      storage: storage(),
+      fetcher: vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input).endsWith('/auth/login')) return json({ ...pair(), user: administrator })
+        if (init?.method === 'PATCH') {
+          expect(String(input)).toBe('/api/v1/admin/users/user-id/status')
+          expect(JSON.parse(String(init.body))).toEqual({ status: 'disabled' })
+          return json({ ...user, status: 'disabled' })
+        }
+        expect(String(input)).toBe('/api/v1/admin/users/user-id')
+        return json(user)
+      }),
+    })
+    await client.login('admin', 'Password123')
+    expect(await client.getUser('user-id')).toEqual(user)
+    expect((await client.setUserStatus('user-id', 'disabled')).status).toBe('disabled')
+    expect(client.getSnapshot().user).toEqual(administrator)
+  })
+
+  it('preserves authentication when administrator permissions are denied', async () => {
+    const client = new AuthClient({
+      storage: storage(),
+      fetcher: vi.fn(async (input: string | URL | Request) =>
+        String(input).endsWith('/auth/login')
+          ? json(pair())
+          : json({ code: 'ADMIN_REQUIRED', message: '需要管理员权限' }, 403),
+      ),
+    })
+    await client.login('alice', 'Password123')
+    await expect(client.listUsers()).rejects.toMatchObject({ code: 'ADMIN_REQUIRED' })
+    expect(client.getSnapshot().hasSession).toBe(true)
+  })
+
   it('updates the current profile and publishes the server-normalized user', async () => {
     const updated = { ...user, username: 'alice_new', email: 'new@example.com' }
     const client = new AuthClient({

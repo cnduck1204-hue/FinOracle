@@ -1,0 +1,29 @@
+{
+  "verifiedAt": "2026-11-01T12:47:55.025475+00:00",
+  "page": "http://127.0.0.1:8080/admin/users",
+  "frontendUnitTests": {
+    "passed": 31,
+    "failed": 0
+  },
+  "deployedBrowserTests": {
+    "passed": 14,
+    "failed": 0,
+    "adminScenarios": 7,
+    "authenticationScenarios": 7
+  },
+  "productionBuild": "passed",
+  "changedFileFormatting": "passed",
+  "fixtureRuff": "passed",
+  "review": "one keyboard-focus issue reproduced and fixed; focus regression passed",
+  "backendChanges": false,
+  "temporaryAccountCleanup": "completed by browser afterAll hooks",
+  "gitCommitCreated": false,
+  "gitPushPerformed": false,
+  "board": {
+    "elementsMatch": true,
+    "previewMatches": true,
+    "elementCount": 334,
+    "version": 12,
+    "url": "http://111.229.21.163:6767/editor/7a034382-795f-418d-8e49-5ecb636200eb"
+  }
+}

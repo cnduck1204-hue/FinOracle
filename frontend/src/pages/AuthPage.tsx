@@ -109,6 +109,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     '/search',
     '/history',
     '/favorites',
+    '/admin/users',
   ].includes(state?.from || '')
     ? state!.from!
     : '/chat'

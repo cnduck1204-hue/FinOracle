@@ -1,4 +1,12 @@
-import type { ProfileInput, RegisterInput, SessionSnapshot, TokenPair, User } from './types'
+import type {
+  ProfileInput,
+  RegisterInput,
+  SessionSnapshot,
+  TokenPair,
+  User,
+  UserListQuery,
+  UserPage,
+} from './types'
 import { browserLockRequest, TabLease, type LockRequest } from './tab-lease'
 
 export const SESSION_KEY = 'finoracle.refresh.v1'
@@ -329,6 +337,51 @@ export class AuthClient {
       throw new ApiError('账号资料未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
     this.publish({ user })
     return user
+  }
+
+  async listUsers(query: UserListQuery = {}): Promise<UserPage> {
+    const params = new URLSearchParams({
+      page: String(query.page ?? 1),
+      page_size: String(query.page_size ?? 20),
+    })
+    if (query.q?.trim()) params.set('q', query.q.trim())
+    if (query.role) params.set('role', query.role)
+    if (query.status) params.set('status', query.status)
+    const result = await this.protectedRequest<Partial<UserPage> | null>(`/admin/users?${params}`)
+    if (
+      !result ||
+      !Array.isArray(result.items) ||
+      !result.items.every(isUser) ||
+      !Number.isSafeInteger(result.total) ||
+      result.total! < 0 ||
+      !Number.isSafeInteger(result.page) ||
+      result.page! < 1 ||
+      !Number.isSafeInteger(result.page_size) ||
+      result.page_size! < 1 ||
+      result.page_size! > 100
+    )
+      throw new ApiError('用户列表未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result as UserPage
+  }
+
+  async getUser(id: string): Promise<User> {
+    const result = await this.protectedRequest<unknown>(`/admin/users/${encodeURIComponent(id)}`)
+    if (!isUser(result))
+      throw new ApiError('用户资料未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result
+  }
+
+  async setUserStatus(id: string, status: User['status']): Promise<User> {
+    const result = await this.protectedRequest<unknown>(
+      `/admin/users/${encodeURIComponent(id)}/status`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      },
+    )
+    if (!isUser(result))
+      throw new ApiError('用户资料未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result
   }
 
   async logout(): Promise<void> {

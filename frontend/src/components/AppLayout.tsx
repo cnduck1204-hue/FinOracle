@@ -9,6 +9,7 @@ import {
   Plus,
   Search,
   Star,
+  UsersRound,
 } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
@@ -22,6 +23,7 @@ const links = [
   { path: '/search', label: '全文检索', icon: Search, soon: true },
   { path: '/history', label: '会话历史', icon: History, soon: true },
   { path: '/favorites', label: '我的收藏', icon: Star, soon: true },
+  { path: '/admin/users', label: '用户管理', icon: UsersRound, adminOnly: true },
 ]
 
 export function AppLayout() {
@@ -88,18 +90,20 @@ export function AppLayout() {
         </Link>
         <div className="nav-heading">WORKSPACE / 工作空间</div>
         <nav className="nav-list">
-          {links.map(({ path, label, icon: Icon, soon }) => (
-            <NavLink
-              key={path}
-              to={path}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-              onClick={() => setMenuOpen(false)}
-            >
-              <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
-              {label}
-              {soon && <small>准备中</small>}
-            </NavLink>
-          ))}
+          {links
+            .filter((link) => !link.adminOnly || user.role === 'admin')
+            .map(({ path, label, icon: Icon, soon }) => (
+              <NavLink
+                key={path}
+                to={path}
+                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                onClick={() => setMenuOpen(false)}
+              >
+                <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
+                {label}
+                {soon && <small>准备中</small>}
+              </NavLink>
+            ))}
         </nav>
         <div className="sidebar-information">
           <span className="eyebrow">

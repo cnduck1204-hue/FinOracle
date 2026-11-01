@@ -19,6 +19,21 @@ export interface TokenPair {
 
 export type ProfileInput = Pick<User, 'username' | 'email'>
 
+export interface UserListQuery {
+  page?: number
+  page_size?: number
+  q?: string
+  role?: User['role']
+  status?: User['status']
+}
+
+export interface UserPage {
+  items: User[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export interface RegisterInput {
   username: string
   email: string
