@@ -124,6 +124,34 @@ class ParsingSettings(BaseSettings):
     model_config = _ENV_SOURCE
 
 
+class StorageSettings(BaseSettings):
+    """对象存储配置：通过 S3 API 访问，开发环境由 Compose 运行 MinIO。
+
+    单独成类，worker 与导入脚本只需这部分配置即可读写原件。
+    """
+
+    # API 容器内为 http://minio:9000，本机 uvicorn 或脚本为 http://127.0.0.1:9000
+    s3_endpoint_url: str = "http://127.0.0.1:9000"
+    s3_region: str = "us-east-1"
+    s3_access_key: str = Field(default="finoracle", min_length=3)
+    s3_secret_key: SecretStr = Field(min_length=8, repr=False)
+    s3_bucket: str = Field(
+        default="finoracle-documents",
+        # S3 桶名规则：3–63 位小写字母、数字、连字符，首尾为字母或数字
+        pattern=r"^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$",
+    )
+
+    @field_validator("s3_endpoint_url")
+    @classmethod
+    def validate_endpoint(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("S3_ENDPOINT_URL 必须以 http:// 或 https:// 开头")
+        return value
+
+    model_config = _ENV_SOURCE
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
@@ -132,3 +160,8 @@ def get_settings() -> Settings:
 @lru_cache
 def get_parsing_settings() -> ParsingSettings:
     return ParsingSettings()
+
+
+@lru_cache
+def get_storage_settings() -> StorageSettings:
+    return StorageSettings()

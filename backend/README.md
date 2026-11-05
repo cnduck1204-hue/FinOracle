@@ -1,6 +1,6 @@
 # FinOracle 后端
 
-Python 3.11+、FastAPI、SQLAlchemy AsyncSession、MySQL 8.4、Redis 7.4。以下命令均在 `backend/` 目录执行。
+Python 3.11+、FastAPI、SQLAlchemy AsyncSession、MySQL 8.4、Redis 7.4，文档原件存放在 S3 API 对象存储中。以下命令均在 `backend/` 目录执行。
 
 ## 运行
 
@@ -11,13 +11,21 @@ python3 scripts/init_env.py
 docker compose up --build -d --wait
 ```
 
-默认 API 端口为 8001，MySQL 为 3306，Redis 为 6379，Gotenberg（文档格式转换）为 3000；都仅绑定本机。首次启动需拉取约 420 MB 的 Gotenberg 镜像。API 启动时运行 `alembic upgrade head`。可用 `docker compose logs api` 查看启动情况。
+默认 API 端口为 8001，MySQL 为 3306，Redis 为 6379，Gotenberg（文档格式转换）为 3000，对象存储为 9000（Web 控制台 9001，用 `S3_ACCESS_KEY` / `S3_SECRET_KEY` 登录）；都仅绑定本机。首次启动需拉取约 420 MB 的 Gotenberg 镜像和约 230 MB 的对象存储镜像。
+
+对象存储使用 Silo（`pgsty/silo`）：MinIO 社区版已停止维护，官方镜像不再公开提供，Silo 是它的维护分支，接口与数据格式相同。应用只通过 S3 API 访问，换成其他 S3 兼容存储只需修改 `S3_*` 配置。2026-11-05 之前生成的 `.env` 缺少 `S3_SECRET_KEY`，Compose 会提示该变量必填而拒绝启动；在 `backend/.env` 末尾追加一行随机值即可：
+
+```sh
+printf '
+S3_SECRET_KEY=%s
+' "$(python3 -c 'import secrets; print(secrets.token_hex(20))')" >> .env
+```API 启动时运行 `alembic upgrade head`。可用 `docker compose logs api` 查看启动情况。
 
 本机调试应用需要安装 [uv](https://docs.astral.sh/uv/)，使用容器中的数据库和缓存：
 
 ```sh
 uv sync --locked
-docker compose up -d --wait mysql redis
+docker compose up -d --wait mysql redis minio
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
@@ -59,7 +67,7 @@ Access Token 默认 30 分钟，Refresh Token 默认 7 天。刷新沿用同一�
 
 `.env.example` 列出完整默认项；真实 `.env` 不入库。`scripts/init_env.py` 为 MySQL 应用账号、root 账号和 JWT 分别生成随机值，已有 `.env` 会原样保留。
 
-配置按性质分三处：随部署机器变化的配置（含密钥与路径）定义在 `app/core/config.py`，值写在 `.env` 或环境变量中，其中 `Settings` 为应用配置，`ParsingSettings` 为不含密钥、命令行也能加载的解析配置；解析算法的阈值和默认值在 `app/rag/parsing/options.py`，随代码修改和测试，不读环境变量；单次请求可调的解析参数见 `app/schemas/document.py`。
+配置按性质分三处：随部署机器变化的配置（含密钥与路径）定义在 `app/core/config.py`，值写在 `.env` 或环境变量中，其中 `Settings` 为应用配置，`ParsingSettings` 为不含密钥、命令行也能加载的解析配置，`StorageSettings` 为对象存储配置（worker 与导入脚本可单独加载）；解析算法的阈值和默认值在 `app/rag/parsing/options.py`，随代码修改和测试，不读环境变量；单次请求可调的解析参数见 `app/schemas/document.py`。
 
 | 配置 | 默认值 / 说明 |
 | --- | --- |
@@ -76,6 +84,11 @@ Access Token 默认 30 分钟，Refresh Token 默认 7 天。刷新沿用同一�
 | `GOTENBERG_URL` | 可选；`.doc`、`.rtf`、`.odt` 交给 Gotenberg 转为 PDF。Compose 为 API 容器设为 `http://gotenberg:3000`，本机 `uvicorn` 或命令行用 `http://127.0.0.1:3000` |
 | `SOFFICE_PATH` | 可选；未配置 Gotenberg 时使用本机 LibreOffice `soffice`，为空时从 PATH 查找 |
 | `CONVERSION_TIMEOUT_SECONDS` | 单个文档格式转换超时，默认 120；Compose 中 Gotenberg 自身超时设为 110 秒 |
+| `S3_ENDPOINT_URL` | 对象存储地址，默认 `http://127.0.0.1:9000`；Compose 为 API 容器设为 `http://minio:9000` |
+| `S3_ACCESS_KEY`、`S3_SECRET_KEY` | 访问密钥；密钥必填（8 位以上），初始化脚本生成 40 位随机值。Compose 同时用作对象存储的根凭据，生产应改用只能访问文档桶的独立密钥 |
+| `S3_BUCKET` | 文档桶，默认 `finoracle-documents`；首次写入时自动创建 |
+| `S3_REGION` | `us-east-1` |
+| `MINIO_PORT`、`MINIO_CONSOLE_PORT` | Compose 对外端口，默认 9000、9001 |
 
 管理员配置全部未设置时跳过初始化，部分配置会拒绝启动。不提供默认管理员凭据，初始化脚本也不生成管理员密码。已有管理员时直接跳过创建，保留当前用户名、邮箱、密码和状态；管理员修改个人资料后，原初始化配置不会阻止重启。仅在尚无管理员时使用配置创建首个管理员，不提升已有普通用户。
 
@@ -105,7 +118,7 @@ scripts/parse_document.py ───┘
 3. 调用 `POST /auth/login` 获取管理员 `access_token`，在解析接口的 Auth 中选择 Bearer Token。
 4. Body 选 form-data，`file` 选择文件，其他字段按需填写后发送。
 
-直接请求 API 端口，不要经前端 8080 代理：Nginx 默认限制请求体 1 MB，读超时为 20 秒。
+前端 8080 代理对 `/api/v1/admin/` 路径放宽到请求体 55 MB、读超时 180 秒，其他路径仍为 1 MB、20 秒。大文件或扫描件的解析预览耗时可能更长，直接请求 API 端口。
 
 命令行不需要数据库和登录：
 
@@ -154,6 +167,7 @@ app/rag/parsing/
 - `cache/`：失败计数、会话及令牌轮换的原子操作。
 - `core/`、`middleware/`：配置、统一错误、JSON 日志和请求追踪。
 - `rag/parsing/`：文档解析、OCR、清洗与切片；Parser、OCR、Chunker 各占一个目录，按基类实现并登记，结构见上文。
+- `storage/`：对象存储接口 `ObjectStorage` 与 S3 API 实现。方法为同步调用（API 中经线程池调用）；对象不存在时抛出 `FileNotFoundError`，存储不可用返回 503 `STORAGE_UNAVAILABLE`。
 
 MySQL 保存用户；Redis 保存带有效期的会话状态，不保存原始令牌。会话创建、刷新轮换与退出分别通过 Lua 脚本原子执行。退出只撤销当前会话，不影响该账号的其他登录。
 
@@ -182,7 +196,7 @@ uv run python -m tests.integration
 uv run python -m tests.integration --fresh-install
 ```
 
-检查覆盖真实 HTTP 认证流程、事务回滚、Redis 回复丢失、刷新重放、并发轮换、退出登录与会话隔离。每项使用唯一测试数据并清理自己的记录。首次安装检查创建临时 Compose 项目和卷，只删除自己创建的临时资源。
+检查覆盖真实 HTTP 认证流程、事务回滚、Redis 回复丢失、刷新重放、并发轮换、退出登录与会话隔离，以及对象存储的读写、自动建桶和凭据错误（在临时桶中进行，结束后删除）。每项使用唯一测试数据并清理自己的记录。首次安装检查创建临时 Compose 项目和卷，只删除自己创建的临时资源。
 
 Postman Collection 与空白凭据环境位于 [postman/](postman/)。仅在可丢弃本地环境显式开启后运行，默认管理员流程关闭；账号与令牌串联说明见 [API 交接](../docs/backend-handoff.md)。
 
@@ -196,4 +210,4 @@ uv run python scripts/benchmark.py --allow-disposable-users --samples 20 --warmu
 
 ## 下一阶段
 
-用户资料修改、管理员初始化与用户管理由本次后端交付覆盖；资料编辑及管理员页面由前端团队接入。文档解析已提供离线命令（见上文）；文档上传、入库、向量化、检索和 RAG 问答尚未实现。配套认证前端运行方式见[前端说明](../frontend/README.md)，后端契约见 [API 交接](../docs/backend-handoff.md)，阶段背景见[基础需求](../docs/superpowers/specs/2026-09-20-backend-foundation-prd.md)。
+用户资料修改、管理员初始化与用户管理由本次后端交付覆盖；资料编辑及管理员页面由前端团队接入。文档解析已提供离线命令（见上文）；文档入库按[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)分步实施，目前完成对象存储基础设施，上传入库、向量化、检索和 RAG 问答尚未实现。配套认证前端运行方式见[前端说明](../frontend/README.md)，后端契约见 [API 交接](../docs/backend-handoff.md)，阶段背景见[基础需求](../docs/superpowers/specs/2026-09-20-backend-foundation-prd.md)。

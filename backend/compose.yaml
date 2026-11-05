@@ -59,6 +59,26 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+  # 文档原件与解析产物的对象存储，应用只通过 S3 API 访问。MinIO 社区版已停止维护、官方镜像
+  # 不再公开，这里使用其维护分支 Silo（同样的接口、环境变量与数据格式）
+  minio:
+    image: pgsty/silo:RELEASE.2026-10-26T00-00-00Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      # 开发环境中应用直接使用这组根凭据；生产应为应用创建只能访问文档桶的独立密钥
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-finoracle}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?S3_SECRET_KEY is required}
+    ports:
+      - "127.0.0.1:${MINIO_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
   api:
     build:
       context: .
@@ -92,6 +112,11 @@ services:
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
       GOTENBERG_URL: http://gotenberg:3000
       CONVERSION_TIMEOUT_SECONDS: "${CONVERSION_TIMEOUT_SECONDS:-120}"
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-finoracle}
+      S3_SECRET_KEY: "${S3_SECRET_KEY:?S3_SECRET_KEY is required}"
+      S3_BUCKET: ${S3_BUCKET:-finoracle-documents}
     depends_on:
       mysql:
         condition: service_healthy
@@ -99,6 +124,9 @@ services:
         condition: service_healthy
       # 转换服务未就绪时只影响 .doc 等格式的解析，不阻塞 API 启动
       gotenberg:
+        condition: service_started
+      # 对象存储只用于文档导入，未就绪时不阻塞认证等其他接口
+      minio:
         condition: service_started
     healthcheck:
       test:
@@ -116,3 +144,4 @@ services:
 volumes:
   mysql_data:
   redis_data:
+  minio_data:

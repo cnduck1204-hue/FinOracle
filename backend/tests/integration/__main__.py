@@ -6,6 +6,7 @@ import sys
 
 MODULES = (
     "containers",
+    "storage",
     "database_schema",
     "registration_transactions",
     "login_transactions",
