@@ -239,3 +239,30 @@ def test_get_storage_reuses_one_client(monkeypatch):
         assert storage.bucket == BUCKET
     finally:
         get_storage.cache_clear()
+
+
+def test_open_object_streams_content_and_closes_the_body(stubbed):
+    storage, stubber = stubbed
+    data = b"%PDF-1.7 " + b"x" * 2_500_000
+    stream = body(data)
+    stubber.add_response(
+        "get_object",
+        {"Body": stream, "ContentLength": len(data), "ContentType": "application/pdf"},
+        {"Bucket": BUCKET, "Key": "x/original.pdf"},
+    )
+
+    info, chunks = storage.open_object("x/original.pdf")
+
+    assert info == ObjectInfo("x/original.pdf", len(data), "application/pdf")
+    received = list(chunks)
+    assert b"".join(received) == data
+    assert len(received) == 3
+    assert stream._raw_stream.closed
+
+
+@pytest.mark.parametrize("code", ["NoSuchKey", "NoSuchBucket"])
+def test_open_missing_object_fails_before_streaming(stubbed, code):
+    storage, stubber = stubbed
+    stubber.add_client_error("get_object", code, http_status_code=404)
+    with pytest.raises(FileNotFoundError):
+        storage.open_object("x/missing.pdf")

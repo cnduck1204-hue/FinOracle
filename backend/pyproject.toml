@@ -53,3 +53,5 @@ addopts = "--cov=app --cov-report=term-missing --cov-fail-under=80"
 
 [tool.coverage.run]
 source = ["app"]
+# SQLAlchemy 异步会话经 greenlet 切换执行，不加 greenlet 时其后的代码行不被记录
+concurrency = ["thread", "greenlet"]

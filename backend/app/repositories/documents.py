@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import delete, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import (
@@ -14,6 +14,7 @@ from app.models.document import (
     content_digest,
 )
 from app.rag.parsing.models import Chunk
+from app.repositories.search import LIKE_ESCAPE, contains_pattern
 
 
 class DocumentRepository:
@@ -35,6 +36,47 @@ class DocumentRepository:
         return await self.session.scalar(
             select(Document).where(Document.external_id == external_id)
         )
+
+    async def list_page(
+        self,
+        *,
+        q: str | None,
+        published: bool | None,
+        offset: int,
+        limit: int,
+    ) -> tuple[list[Document], int]:
+        """按最近更新排序；q 按字面匹配标题、发文机构或外部 ID。"""
+        filters = []
+        if q:
+            pattern = contains_pattern(q)
+            filters.append(
+                or_(
+                    Document.title.like(pattern, escape=LIKE_ESCAPE),
+                    Document.issuer.like(pattern, escape=LIKE_ESCAPE),
+                    Document.external_id.like(pattern, escape=LIKE_ESCAPE),
+                )
+            )
+        if published is not None:
+            has_published = (
+                select(DocumentVersion.id)
+                .where(
+                    DocumentVersion.document_id == Document.id,
+                    DocumentVersion.status == "published",
+                )
+                .exists()
+            )
+            filters.append(has_published if published else ~has_published)
+        total = await self.session.scalar(
+            select(func.count()).select_from(Document).where(*filters)
+        )
+        documents = await self.session.scalars(
+            select(Document)
+            .where(*filters)
+            .order_by(Document.updated_at.desc(), Document.id)
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(documents), int(total or 0)
 
 
 class DocumentVersionRepository:
@@ -73,6 +115,19 @@ class DocumentVersionRepository:
                 DocumentVersion.status == "published",
             )
         )
+
+    async def list_for_documents(
+        self, document_ids: Sequence[UUID]
+    ) -> list[DocumentVersion]:
+        """多个制度的全部版本，按创建时间从新到旧；用于列表页汇总。"""
+        if not document_ids:
+            return []
+        versions = await self.session.scalars(
+            select(DocumentVersion)
+            .where(DocumentVersion.document_id.in_(document_ids))
+            .order_by(DocumentVersion.created_at.desc(), DocumentVersion.id)
+        )
+        return list(versions)
 
     async def list_for_document(self, document_id: UUID) -> list[DocumentVersion]:
         """按创建时间从新到旧，时间相同时按 ID 稳定排序。"""

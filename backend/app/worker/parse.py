@@ -16,7 +16,6 @@ from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import ParsingSettings
-from app.core.exceptions import AppException
 from app.rag.parsing import (
     PARSER_VERSION,
     ParseResult,
@@ -30,6 +29,12 @@ from app.repositories.documents import (
     DocumentVersionRepository,
 )
 from app.schemas.document import ParseRequest
+from app.services.document_errors import (
+    document_empty,
+    file_missing,
+    invalid_parse_options,
+    version_not_found,
+)
 from app.services.document_parsing import (
     create_document_converter,
     ocr_provider,
@@ -50,30 +55,6 @@ class _Source:
     parse_options: dict[str, Any]
 
 
-def version_missing() -> AppException:
-    return AppException(
-        code="VERSION_NOT_FOUND", message="文档版本不存在", status_code=404
-    )
-
-
-def file_missing() -> AppException:
-    return AppException(
-        code="DOCUMENT_FILE_MISSING", message="文档原件不存在", status_code=422
-    )
-
-
-def document_empty() -> AppException:
-    return AppException(
-        code="DOCUMENT_EMPTY", message="文档中没有可用的文本", status_code=422
-    )
-
-
-def invalid_options() -> AppException:
-    return AppException(
-        code="PARSE_OPTIONS_INVALID", message="解析参数不合法", status_code=422
-    )
-
-
 class ParseHandler:
     kind = "parse"
 
@@ -92,7 +73,7 @@ class ParseHandler:
         try:
             request = ParseRequest.model_validate(source.parse_options)
         except ValidationError as error:
-            raise invalid_options() from error
+            raise invalid_parse_options() from error
 
         version_id = context.job.version_id
         pdf_key: str | None = None
@@ -154,7 +135,7 @@ class ParseHandler:
                 context.job.version_id, for_update=True
             )
             if version is None:
-                raise version_missing()
+                raise version_not_found()
             version.status = "parsing"
             return _Source(
                 document_id=version.document_id,
@@ -172,7 +153,7 @@ class ParseHandler:
                 context.job.version_id, for_update=True
             )
             if version is None:
-                raise version_missing()
+                raise version_not_found()
             await DocumentChunkRepository(session).replace_for_version(
                 version, result.chunks
             )

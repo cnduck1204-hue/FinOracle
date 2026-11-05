@@ -58,6 +58,17 @@ uv run python -m app.worker
 | GET | `/admin/users/{user_id}` | 管理员查询用户详情 | 200 |
 | PATCH | `/admin/users/{user_id}/status` | 管理员启用或禁用普通用户 | 200 |
 | POST | `/admin/documents/parse` | 管理员上传文档并返回解析结果（预览，不入库） | 200 |
+| POST | `/admin/imports` | 上传文档入库：存储原件并创建解析任务，由 worker 后台解析 | 202 |
+| GET | `/admin/imports`、`/admin/imports/{job_id}` | 导入任务列表与详情（阶段、进度、错误） | 200 |
+| POST | `/admin/imports/{job_id}/retry` | 重新执行失败的任务 | 202 |
+| GET | `/admin/documents`、`/admin/documents/{document_id}` | 制度列表（搜索、是否已发布）与详情 | 200 |
+| PATCH | `/admin/documents/{document_id}` | 修改制度标题、发文机构 | 200 |
+| GET | `/admin/documents/{document_id}/versions` | 制度的全部版本 | 200 |
+| GET、PATCH | `/admin/versions/{version_id}` | 版本详情；修改登记信息与时效（不影响切片） | 200 |
+| GET | `/admin/versions/{version_id}/chunks` | 版本切片分页 | 200 |
+| GET | `/admin/versions/{version_id}/file` | 原件或可预览的 PDF（`variant=original\|pdf`） | 200 |
+| POST | `/admin/versions/{version_id}/reparse` | 用新参数或原参数重新解析 | 202 |
+| DELETE | `/admin/versions/{version_id}` | 删除未发布的版本及其切片、任务与文件 | 204 |
 
 注册提交 `username`、`email`、`password`、`confirm_password`；登录提交 `identifier`、`password`；刷新提交 `refresh_token`。退出与个人信息接口使用 `Authorization: Bearer <access_token>`。刷新接口不要求 Access Token。
 
@@ -169,7 +180,7 @@ app/rag/parsing/
 ## 代码组织
 
 - `api/`：请求模型绑定、认证依赖、响应和路由。
-- `services/`：注册、登录、刷新、退出的业务规则及事务边界；`document_parsing.py` 为接口与命令行共用的解析服务。
+- `services/`：注册、登录、刷新、退出的业务规则及事务边界；`document_parsing.py` 为接口、命令行与 worker 共用的解析服务；`document_imports.py`（导入、重试、重新解析、删除）与 `document_library.py`（制度、版本、切片、任务查询与原件读取）为入库管理，错误码集中在 `document_errors.py`。
 - `repositories/`、`models/`、`db/`：数据库访问、表模型和连接生命周期；`db/engine.py` 提供不读取配置的连接工厂，供 worker 使用。
 - `security/`：线程池中的 Argon2 运算、JWT 签发和校验。
 - `cache/`：失败计数、会话及令牌轮换的原子操作。
@@ -205,7 +216,7 @@ uv run python -m tests.integration
 uv run python -m tests.integration --fresh-install
 ```
 
-检查覆盖真实 HTTP 认证流程、事务回滚、Redis 回复丢失、刷新重放、并发轮换、退出登录与会话隔离，以及对象存储的读写、自动建桶和凭据错误（在临时桶中进行，结束后删除），入库表的数据库约束，worker 的并发认领与租约接管，和经 Compose 中 worker 执行的真实解析任务（.doc 经 Gotenberg 转换、损坏文件直接失败）。每项使用唯一测试数据并清理自己的记录。首次安装检查创建临时 Compose 项目和卷，只删除自己创建的临时资源。
+检查覆盖真实 HTTP 认证流程、事务回滚、Redis 回复丢失、刷新重放、并发轮换、退出登录与会话隔离，以及对象存储的读写、自动建桶和凭据错误（在临时桶中进行，结束后删除），入库表的数据库约束，worker 的并发认领与租约接管，和经 Compose 中 worker 执行的真实解析任务（.doc 经 Gotenberg 转换、损坏文件直接失败），以及通过 API 的完整入库流程（上传、解析、读取切片与原件、重复上传、重新解析、删除）。每项使用唯一测试数据并清理自己的记录。首次安装检查创建临时 Compose 项目和卷，只删除自己创建的临时资源。
 
 Postman Collection 与空白凭据环境位于 [postman/](postman/)。仅在可丢弃本地环境显式开启后运行，默认管理员流程关闭；账号与令牌串联说明见 [API 交接](../docs/backend-handoff.md)。
 
@@ -219,4 +230,4 @@ uv run python scripts/benchmark.py --allow-disposable-users --samples 20 --warmu
 
 ## 下一阶段
 
-用户资料修改、管理员初始化与用户管理由本次后端交付覆盖；资料编辑及管理员页面由前端团队接入。文档解析已提供离线命令（见上文）；文档入库按[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)分步实施，目前完成对象存储、入库数据表和后台解析任务，上传入库接口、向量化、检索和 RAG 问答尚未实现。配套认证前端运行方式见[前端说明](../frontend/README.md)，后端契约见 [API 交接](../docs/backend-handoff.md)，阶段背景见[基础需求](../docs/superpowers/specs/2026-09-20-backend-foundation-prd.md)。
+用户资料修改、管理员初始化与用户管理由本次后端交付覆盖；资料编辑及管理员页面由前端团队接入。文档解析已提供离线命令（见上文）；文档入库按[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)分步实施，目前完成对象存储、入库数据表、后台解析任务和管理端入库接口；批准、发布、向量化、检索和 RAG 问答尚未实现。配套认证前端运行方式见[前端说明](../frontend/README.md)，后端契约见 [API 交接](../docs/backend-handoff.md)，阶段背景见[基础需求](../docs/superpowers/specs/2026-09-20-backend-foundation-prd.md)。

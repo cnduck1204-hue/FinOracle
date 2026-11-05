@@ -6,6 +6,7 @@ STORAGE_UNAVAILABLE（503），worker 据此判定可重试。
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,6 +32,13 @@ class ObjectStorage(ABC):
     @abstractmethod
     def download_file(self, key: str, path: Path) -> None:
         """下载到本地路径；失败时不留下不完整的文件。"""
+
+    @abstractmethod
+    def open_object(self, key: str) -> tuple[ObjectInfo, Iterator[bytes]]:
+        """读取对象信息并返回按块读取内容的迭代器；对象不存在时立即抛出 FileNotFoundError。
+
+        迭代器读完或被关闭时释放连接，适合直接交给 StreamingResponse。
+        """
 
     @abstractmethod
     def stat(self, key: str) -> ObjectInfo | None:

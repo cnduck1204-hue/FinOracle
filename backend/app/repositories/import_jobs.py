@@ -3,11 +3,24 @@
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, and_, select, update
+from sqlalchemy import ColumnElement, Row, and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
+from app.models.document import Document, DocumentVersion
 from app.models.import_job import ACTIVE_JOB_STATUSES, ImportJob
+
+# 任务连同所属制度 ID、文件名与制度标题，供列表与详情展示
+_WITH_CONTEXT = (
+    select(
+        ImportJob,
+        DocumentVersion.document_id,
+        DocumentVersion.file_name,
+        Document.title,
+    )
+    .join(DocumentVersion, DocumentVersion.id == ImportJob.version_id)
+    .join(Document, Document.id == DocumentVersion.document_id)
+)
 
 
 class ImportJobRepository:
@@ -34,6 +47,54 @@ class ImportJobRepository:
             .order_by(ImportJob.created_at.desc(), ImportJob.id)
             .limit(1)
         )
+
+    async def get_with_context(self, job_id: UUID) -> Row | None:
+        """返回 (任务, 制度 ID, 文件名, 制度标题)。"""
+        result = await self.session.execute(_WITH_CONTEXT.where(ImportJob.id == job_id))
+        return result.first()
+
+    async def latest_for_version(self, version_id: UUID) -> Row | None:
+        """版本最近一次的任务，行内容同 get_with_context。"""
+        result = await self.session.execute(
+            _WITH_CONTEXT.where(ImportJob.version_id == version_id)
+            .order_by(ImportJob.created_at.desc(), ImportJob.id)
+            .limit(1)
+        )
+        return result.first()
+
+    async def list_page(
+        self,
+        *,
+        status: str | None,
+        kind: str | None,
+        document_id: UUID | None,
+        version_id: UUID | None,
+        offset: int,
+        limit: int,
+    ) -> tuple[list[Row], int]:
+        """按创建时间从新到旧，行内容同 get_with_context。"""
+        filters = []
+        if status:
+            filters.append(ImportJob.status == status)
+        if kind:
+            filters.append(ImportJob.kind == kind)
+        if document_id:
+            filters.append(DocumentVersion.document_id == document_id)
+        if version_id:
+            filters.append(ImportJob.version_id == version_id)
+        total = await self.session.scalar(
+            select(func.count())
+            .select_from(ImportJob)
+            .join(DocumentVersion, DocumentVersion.id == ImportJob.version_id)
+            .where(*filters)
+        )
+        result = await self.session.execute(
+            _WITH_CONTEXT.where(*filters)
+            .order_by(ImportJob.created_at.desc(), ImportJob.id)
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(result.all()), int(total or 0)
 
     async def claim_next(
         self, *, worker_id: str, now: datetime, lease_seconds: float

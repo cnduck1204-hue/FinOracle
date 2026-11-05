@@ -2,7 +2,7 @@
 
 import logging
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -117,6 +117,19 @@ class S3ObjectStorage(ObjectStorage):
         finally:
             body.close()
 
+    def open_object(self, key: str) -> tuple[ObjectInfo, Iterator[bytes]]:
+        check_key(key)
+        try:
+            response = self._call(self._client.get_object, Bucket=self.bucket, Key=key)
+        except _BucketMissing as error:
+            raise FileNotFoundError(key) from error
+        info = ObjectInfo(
+            key=key,
+            size=response["ContentLength"],
+            content_type=response.get("ContentType"),
+        )
+        return info, _iterate(response["Body"])
+
     def stat(self, key: str) -> ObjectInfo | None:
         check_key(key)
         try:
@@ -161,3 +174,10 @@ class S3ObjectStorage(ObjectStorage):
         except BotoCoreError as error:
             logger.warning("storage_unreachable: %s %s", name, type(error).__name__)
             raise storage_unavailable() from error
+
+
+def _iterate(body: Any) -> Iterator[bytes]:
+    try:
+        yield from body.iter_chunks(_CHUNK_BYTES)
+    finally:
+        body.close()

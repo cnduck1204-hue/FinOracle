@@ -291,34 +291,42 @@ uploaded → parsing → parsed ─批准→ indexing → ready ─发布→ pub
 
 ## 8 管理端 API
 
-以下接口都需要管理员权限，路径省略 `/api/v1`。
+以下接口都需要管理员权限，路径省略 `/api/v1`。第 4 步已实现除批准、发布、下架以外的接口；这三个接口依赖向量化，随第 5 步实现。
 
 | 方法与路径 | 作用 | 前端页 |
 | --- | --- | --- |
-| `POST /admin/imports` | multipart：file、可选 document_id（不传则新建制度，此时 title 等必填）、版本元数据、解析参数。返回 202 和 `{job, document_id, version_id}` | 13 |
-| `GET /admin/imports` | 任务列表，按 status、kind、document_id 筛选，分页 | 14 |
-| `GET /admin/imports/{job_id}` | 任务详情：阶段、进度、错误和警告 | 15 |
-| `POST /admin/imports/{job_id}/retry` | 把失败任务重新排队（复用原任务） | 14、15 |
-| `GET /admin/documents` | 制度列表，按 q、时效状态、是否已发布筛选 | 12 |
-| `GET` / `PATCH /admin/documents/{id}` | 查看和修改制度元数据 | 12 |
-| `GET /admin/documents/{id}/versions` | 版本列表 | 16 |
-| `GET` / `PATCH /admin/versions/{id}` | 查看版本详情；发布前可修改版本元数据 | 15、16 |
-| `GET /admin/versions/{id}/chunks` | 切片分页 | 15 |
-| `GET /admin/versions/{id}/file?variant=original\|pdf` | 鉴权后流式返回原件或转换后的 PDF | 15 |
-| `POST /admin/versions/{id}/reparse` | 用新参数重新解析（parsed 或 failed 状态） | 15 |
-| `POST /admin/versions/{id}/approve` | 批准，并创建索引任务 | 15 |
-| `POST /admin/versions/{id}/publish` | 发布，替换当前的发布版本 | 16 |
-| `POST /admin/versions/{id}/withdraw` | 下架 | 16 |
-| `DELETE /admin/versions/{id}` | 删除未发布的版本 | 16 |
+| `POST /admin/imports` | multipart：file、可选 document_id（不传则新建制度，此时 title 必填；传了则不能再改制度信息）、版本元数据、解析参数。返回 202 和任务（含 document_id、version_id） | 13 |
+| `GET /admin/imports` | 任务列表，按 status、kind、document_id、version_id 筛选，分页，从新到旧 | 14 |
+| `GET /admin/imports/{job_id}` | 任务详情：阶段、进度、尝试次数、错误码和错误信息 | 15 |
+| `POST /admin/imports/{job_id}/retry` | 把失败任务重新排队（复用原任务，尝试次数清零）；版本须仍为 failed | 14、15 |
+| `GET /admin/documents` | 制度列表，按 q（标题、发文机构、外部 ID，按字面匹配）、是否已发布筛选；每项带版本数、发布版本和最新版本摘要 | 12 |
+| `GET` / `PATCH /admin/documents/{id}` | 查看和修改制度标题、发文机构 | 12 |
+| `GET /admin/documents/{id}/versions` | 版本列表，从新到旧，每项带最近一次任务 | 16 |
+| `GET` / `PATCH /admin/versions/{id}` | 版本详情（含解析统计、警告、最近任务）；修改登记信息，不影响切片，发布后仍可更正与标记时效 | 15、16 |
+| `GET /admin/versions/{id}/chunks` | 切片分页，按顺序 | 15 |
+| `GET /admin/versions/{id}/file?variant=original\|pdf` | 鉴权后流式返回原件或可预览的 PDF；PDF 与常见图片 inline，其他格式以附件下载 | 15 |
+| `POST /admin/versions/{id}/reparse` | 可选提交新解析参数，不提交则沿用原参数；仅 parsed 或 failed 状态 | 15 |
+| `POST /admin/versions/{id}/approve` | 批准，并创建索引任务（第 5 步） | 15 |
+| `POST /admin/versions/{id}/publish` | 发布，替换当前的发布版本（第 5 步） | 16 |
+| `POST /admin/versions/{id}/withdraw` | 下架（第 5 步） | 16 |
+| `DELETE /admin/versions/{id}` | 删除 uploaded、parsed、failed 状态的版本；先提交数据库删除，再删对象，失败只留下孤儿对象。第 5 步加入向量清理 | 16 |
 
-- 同一版本已有 queued 或 running 任务时，再次提交返回 409 `IMPORT_IN_PROGRESS`。
+- 同一版本已有 queued 或 running 任务时，重新解析、删除都返回 409 `IMPORT_IN_PROGRESS`。版本行加锁后再检查，并发提交不会重复建任务。
+- 导入流程：
+  1. 校验扩展名与大小。
+  2. 把上传内容复制到临时文件，同时计算 SHA-256。
+  3. 检查同一制度下是否已有相同文件。
+  4. 写入对象存储。
+  5. 在一个事务中登记制度、版本与任务。
+  - 第 5 步失败时删除刚写入的对象；并发上传同一文件由唯一约束兜底，同样返回 409。
+- 原件的 `Content-Type` 按扩展名设定，不采用客户端提交的值，文本文件不附带 charset（可能是 GB18030）。下载响应带 `X-Content-Type-Options: nosniff`。
 - 现有的 `POST /admin/documents/parse` 保留，作为不入库的即时预览。
 - 新增错误码：
-  - 404：`DOCUMENT_NOT_FOUND`、`VERSION_NOT_FOUND`、`IMPORT_JOB_NOT_FOUND`
-  - 409：`DOCUMENT_VERSION_DUPLICATE`、`VERSION_STATE_CONFLICT`、`IMPORT_IN_PROGRESS`
-  - 422：`DOCUMENT_EMPTY`
+  - 404：`DOCUMENT_NOT_FOUND`、`VERSION_NOT_FOUND`、`IMPORT_JOB_NOT_FOUND`、`FILE_NOT_AVAILABLE`（请求 PDF 但版本没有 PDF）
+  - 409：`DOCUMENT_VERSION_DUPLICATE`、`VERSION_STATE_CONFLICT`、`IMPORT_IN_PROGRESS`、`IMPORT_JOB_NOT_RETRYABLE`
+  - 422：`DOCUMENT_EMPTY`、`DOCUMENT_FILE_MISSING`、`PARSE_OPTIONS_INVALID`（任务错误码）
   - 503：`STORAGE_UNAVAILABLE`
-- 前端 Nginx 需要调整：`client_max_body_size` 至少设为 55m；上传接口的读超时按 50 MB 的上传时间放宽。
+- 前端 Nginx 已对 `admin/` 路径放宽到请求体 55 MB、读超时 180 秒（第 1 步）。
 
 ## 9 向量化接口
 
@@ -357,8 +365,8 @@ uploaded → parsing → parsed ─批准→ indexing → ready ─发布→ pub
 1. **基础设施**（2026-11-05 已完成）：Compose 增加 minio 服务；实现 ObjectStorage（首次写入时建桶）；增加 `S3_*` 配置项；为前端 Nginx 的 `admin/` 路径放宽上传限制。worker 服务移到第 3 步。
 2. **数据表**（2026-11-05 已完成）：迁移、模型和 repository。repository 只提供基本读写；任务认领与续租放在第 3 步，管理端列表筛选放在第 4 步。
 3. **任务框架与解析任务**（2026-11-05 已完成）：认领、续租、重试；实现 parse 任务和 progress 回调；转换后的 PDF 写入对象存储；Compose 增加 worker 服务。另加迁移 `e43a1cf1d3d5`，为执行中任务的租约建索引。
-4. **管理 API**：导入、任务、制度、版本、切片、原文、重试和删除。
-5. **向量化与发布**：两个 Provider 的首个实现；approve → index；publish、withdraw 和 cleanup。
+4. **管理 API**（2026-11-05 已完成）：导入、任务、制度、版本、切片、原文、重试、重新解析和删除。批准、发布、下架移到第 5 步。
+5. **向量化与发布**：两个 Provider 的首个实现；approve → index；publish、withdraw 和 cleanup；删除已索引版本时清理向量。
 6. **release 数据导入脚本**。
 
 第 1–4 步不依赖向量库和 Embedding；第 5 步按第 12 节的选型实现。

@@ -1,7 +1,7 @@
 """worker 测试共用：内存对象存储、异步 SQLite 数据库、可控时钟与种子数据。"""
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -51,6 +51,13 @@ class MemoryStorage(ObjectStorage):
         if check_key(key) not in self.objects:
             raise FileNotFoundError(key)
         path.write_bytes(self.objects[key])
+
+    def open_object(self, key: str) -> tuple[ObjectInfo, Iterator[bytes]]:
+        info = self.stat(key)
+        if info is None:
+            raise FileNotFoundError(key)
+        data = self.objects[key]
+        return info, iter([data[:5], data[5:]])
 
     def stat(self, key: str) -> ObjectInfo | None:
         self._check()
