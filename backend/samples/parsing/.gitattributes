@@ -1,0 +1,4 @@
+# 样本按原始字节保存：PDF 交叉引用表依赖字节偏移，换行转换会损坏文件
+* -text
+*.pdf binary
+README.md text
