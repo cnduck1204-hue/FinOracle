@@ -81,6 +81,10 @@ class JobContext:
     def progress(self) -> tuple[str | None, int, int | None]:
         return self._progress.get()
 
+    def now(self) -> datetime:
+        """worker 的时钟；处理器写入的任务与版本时间都用它。"""
+        return self._clock()
+
     async def lock_job(self, session: AsyncSession) -> ImportJob:
         """在调用方事务中锁定任务；已不归本 worker 所有时抛出 LeaseLost，调用方事务随之回滚。"""
         job = await ImportJobRepository(session).get_owned(self.job.id, self.worker_id)

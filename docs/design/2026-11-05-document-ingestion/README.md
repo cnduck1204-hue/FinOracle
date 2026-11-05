@@ -199,43 +199,46 @@ Compose 新增两个服务：
 ## 7 版本状态与任务
 
 ```
-uploaded → parsing → parsed ─批准→ indexing → ready ─发布→ published → archived
-              ↘ failed（可重试）        ↘ failed（可重试）
+uploaded → parsing → parsed ─批准→ indexing → ready ─发布→ published ─下架/被替换→ archived
+              ↘ failed（可重试）        ↘ failed（可重试）                    archived ─批准→ indexing
 ```
+
+默认配置下（`AUTO_APPROVE_PARSED=true`），完整解析的版本由 worker 自动批准：解析任务成功时，在同一事务中把版本置为 indexing 并创建索引任务。
 
 | 状态 | 含义 | 管理员可执行的操作 |
 | --- | --- | --- |
 | uploaded | 原件已存储，解析任务排队中 | — |
 | parsing | 解析中 | — |
-| parsed | 待校验：可查看切片、警告和 needs_ocr 标记 | 批准、换参数重新解析、删除 |
+| parsed | 解析完成、未自动批准：含待 OCR 图片（needs_ocr），或关闭了自动批准 | 批准、换参数重新解析、删除 |
 | indexing | 向量化写入中 | — |
-| ready | 已索引，待发布 | 发布、删除 |
+| ready | 已索引，待发布 | 发布、重新解析、删除 |
 | published | 用户可检索；每个制度最多一个 | 下架 |
-| archived | 已被新版本替换或已下架 | — |
-| failed | 最近一次任务失败，失败阶段和错误码记在任务上 | 重试、删除 |
+| archived | 已被新版本替换或已下架；切片与原件保留 | 批准（重新上线） |
+| failed | 最近一次任务失败，失败阶段和错误码记在任务上 | 重试、重新解析、删除 |
 
 **可见性与发布**
 
 - 只有 published 版本进入用户检索。uploaded 到 ready 之间的版本只有管理员可见。
-- 发布在单个事务内完成两件事：原发布版本置为 archived，新版本置为 published。数据库唯一约束保证不会同时存在两个已发布版本。
+- 发布在单个事务内完成：锁定制度行串行化并发发布，用锁定读取找到原发布版本，先将其置为 archived 并刷新，再把新版本置为 published。数据库唯一约束保证不会同时存在两个已发布版本。
 - 发布不需要重写向量，检索时按已发布版本的 ID 过滤即可。
-- 已发布版本不能修改或删除，只能下架。修订通过上传新版本完成。
+- 已发布版本不能修改切片或删除，只能下架。修订通过上传新版本完成。
 
 **解析结果的处理**
 
 - parse_status 为 empty 时按失败处理，错误码 `DOCUMENT_EMPTY`。
-- parse_status 为 needs_ocr 时版本进入 parsed，但不允许批准，必须换 OCR 参数重新解析。
+- parse_status 为 needs_ocr 时版本进入 parsed，不自动批准。管理员可以换 OCR 参数重新解析，也可以确认后手动批准。
 - 预留的切片编辑功能（暂不实现）：只允许编辑 parsed 状态的切片。已索引的版本被修改后要退回 parsed，重新批准。
 
 **可安全重试**
 
-- 重新解析：在同一事务内删除该版本的旧切片，再整体写入新切片。
-- 索引任务：先按 version_id 删除向量，再整体写入。
+- 重新解析：在同一事务内删除该版本的旧切片，再整体写入新切片。ready 版本重新解析后旧向量暂留，下次索引时先删后写；未发布的版本不进入检索，不受影响。
+- 索引任务：先按 version_id 删除向量，再分批写入。
 
-**下架与删除**
+**下架、替换与删除**
 
-- 下架或归档：cleanup 任务删除该版本的向量；MySQL 中的切片和 MinIO 中的原件保留，历史答案的引用仍可回溯。
-- 删除草稿：cleanup 任务删除向量和对象，再删除数据库记录。
+- 下架或被新版本替换时，版本置为 archived。提交后由 API 尽力删除该版本的向量（失败只留下孤儿向量，检索按已发布版本过滤，不受影响）。MySQL 中的切片和对象存储中的原件保留，历史答案的引用仍可回溯；需要重新上线时批准即可重新向量化。
+- 删除未发布版本（uploaded、parsed、failed、ready，且没有进行中的任务）：先提交数据库删除，再尽力删除对象与向量。
+- 因此没有使用单独的 cleanup 任务；`import_jobs.kind` 中的 cleanup 保留给以后的批量清理。
 
 ### 任务执行
 
@@ -328,24 +331,38 @@ uploaded → parsing → parsed ─批准→ indexing → ready ─发布→ pub
   - 503：`STORAGE_UNAVAILABLE`
 - 前端 Nginx 已对 `admin/` 路径放宽到请求体 55 MB、读超时 180 秒（第 1 步）。
 
-## 9 向量化接口
+## 9 向量化接口（第 5 步已实现，代码在 `app/rag/indexing/`）
 
-**EmbeddingProvider**
+**EmbeddingProvider**（`DashScopeEmbedding`）
 
-- 属性：`name`、`model`、`dimension`。
-- 方法：`embed_documents(texts)`（批量）、`embed_query(text)`。
+- 属性：`name`、`model`、`dimension`、`max_batch_size`；`model_id` 为 `模型:维度`，记录在版本的 index_model 上。
+- 方法：`embed_documents(texts)`。查询向量化在 C 阶段补充。
+- 默认实现走 DashScope 的 OpenAI 兼容接口 `/embeddings`，模型 `text-embedding-v4`，维度 1024，北京地域。单次最多 10 条，超过返回 400。请求带 `dimensions`，返回按 index 排序，并校验数量与维度。
+- 错误处理：
+  - 401/403：`EMBEDDING_AUTH_FAILED`，不重试。更正密钥并重启 worker 后用重试接口重新执行。
+  - 429、5xx、超时、无法识别的结果：`EMBEDDING_UNAVAILABLE`，按次数重试。
+  - 其他 4xx：`EMBEDDING_REJECTED`，不重试。
+  - 日志只记录状态码，不记录响应正文（可能回显输入文本）。
 
-**VectorStoreProvider**
+**VectorStore**（`MilvusVectorStore`）
 
-- 方法：`ensure_collection(model, dimension)`、`upsert(records)`、`delete_by_version(version_id)`。`search` 在 C 阶段补充。
+- 方法：`ensure_collection()`、`upsert(records)`、`delete_by_version(version_id)`，以及供校验用的 `count_by_version`。`search` 在 C 阶段补充。
+- 集合字段：
+  - `chunk_id`：INT64 主键，即 document_chunks.id；
+  - `document_id`、`version_id`；
+  - `text`：向量化所用文本，VARCHAR，开启中文分词；
+  - `dense`：FLOAT_VECTOR；
+  - `sparse`：由 BM25 函数从 `text` 生成。
+- 索引：dense 为 AUTOINDEX/COSINE，sparse 为 SPARSE_INVERTED_INDEX/BM25，version_id 为 INVERTED。C 阶段的混合检索直接使用，无需重建索引。
+- 方法是同步调用：worker 用 `asyncio.to_thread`，API 用线程池。pymilvus 导入时会调用 `load_dotenv()`，把 `backend/.env` 写入进程环境变量；模块在导入前设置 `PYTHON_DOTENV_DISABLED=1` 关闭这一行为，应用配置仍由 pydantic-settings 读取。
 
 **约定**
 
-- 向量记录包含 chunk_id（INT64 主键）、document_id、version_id 和向量。
-- 集合名包含模型和维度，例如 `chunks_bge_m3_1024`，版本上记录 index_model。
-- 更换模型的步骤：建新集合，全量执行 reindex 任务，切换后删除旧集合。
-- 向量化的文本由同一个函数生成：制度标题 + 章 + 条号 + 正文。修改这个模板等同于更换模型。
+- 集合名由前缀、模型与维度组成，例如 `finoracle_chunks_text_embedding_v4_1024`。
+- 更换模型的步骤：配置新模型后，对需要的版本重新批准（写入新集合），切换后删除旧集合。
+- 向量化文本由 `index_text` 生成：制度标题 + 章 + 节 + 条号（无条号时为标题路径）+ 换行 + 正文，截断到 6000 字（模型单条上限 8192 token）。修改这个规则等同于更换模型。
 - 离线入库和在线查询使用同一个 EmbeddingProvider 配置（画板 B、C 区的约定）。
+- 密钥只给 worker：API 只需要 Milvus 地址和模型名（用于确定集合名与清理向量），不持有 `DASHSCOPE_API_KEY`。
 
 ## 10 外部数据导入
 
@@ -366,7 +383,7 @@ uploaded → parsing → parsed ─批准→ indexing → ready ─发布→ pub
 2. **数据表**（2026-11-05 已完成）：迁移、模型和 repository。repository 只提供基本读写；任务认领与续租放在第 3 步，管理端列表筛选放在第 4 步。
 3. **任务框架与解析任务**（2026-11-05 已完成）：认领、续租、重试；实现 parse 任务和 progress 回调；转换后的 PDF 写入对象存储；Compose 增加 worker 服务。另加迁移 `e43a1cf1d3d5`，为执行中任务的租约建索引。
 4. **管理 API**（2026-11-05 已完成）：导入、任务、制度、版本、切片、原文、重试、重新解析和删除。批准、发布、下架移到第 5 步。
-5. **向量化与发布**：两个 Provider 的首个实现；approve → index；publish、withdraw 和 cleanup；删除已索引版本时清理向量。
+5. **向量化与发布**（2026-11-05 已完成）：DashScope 与 Milvus 两个 Provider；解析后自动批准（可关闭）、批准、发布、下架；下架、替换与删除时清理向量。Compose 增加 Milvus（单容器，内嵌 etcd、本地存储）。
 6. **release 数据导入脚本**。
 
 第 1–4 步不依赖向量库和 Embedding；第 5 步按第 12 节的选型实现。
@@ -378,19 +395,20 @@ uploaded → parsing → parsed ─批准→ indexing → ready ─发布→ pub
 
 ## 12 选型结论（2026-11-05 确认）
 
-1. **向量库：Milvus standalone，版本不低于 2.5。**
+1. **向量库：Milvus standalone，使用 v2.6.23（2.6 系列仍在维护；3.0 于 2026-07 发布，暂不采用）。**
    - 画板中已经列出。
-   - 底层存储复用同一个 MinIO，使用单独的桶。
+   - 开发环境按官方 standalone_embed 方式单容器运行：内嵌 etcd，数据存本地卷，不依赖对象存储。需要备份或扩展时再改为独立 etcd 加对象存储的部署。
    - 2.5 版起原生支持 BM25 全文检索，混合检索可以在一处完成。
-   - 代价是多出 etcd 和 Milvus 两个容器，内存占用较高，部署前要按服务器配置评估。
-   - 具体镜像版本在实施第 5 步时固定。
+   - 镜像约 1.4 GB，内存占用较高，部署前要按服务器配置评估。
+   - 镜像固定为 `milvusdb/milvus:v2.6.23`，Python 客户端为 pymilvus 2.6。
 2. **Embedding：先用 Qwen text-embedding API（DashScope）。**
    - 与画板中的 LLM 选型同源，不占用服务器算力。
-   - 具体型号和向量维度在实施第 5 步时按当时可用的版本确定；查询延迟需要实测。
+   - 采用 `text-embedding-v4`、1024 维（可通过 `EMBEDDING_MODEL`、`EMBEDDING_DIMENSION` 调整）；查询延迟需要实测。
    - BGE-M3 本地部署保留为可选 Provider。
-3. **人工校验门槛：解析后必须经管理员批准才向量化。**
-   - 与数据契约"不能仅凭解析成功批准"一致。
-   - 导入脚本可以用 `--approve` 跳过这一步。
+3. **批准门槛：默认自动批准（2026-11-05 改为此决定）。**
+   - 原定解析后须管理员批准才向量化；现改为完整解析的版本由 worker 自动批准，`AUTO_APPROVE_PARSED=false` 可恢复人工批准。
+   - 含待 OCR 图片（needs_ocr）的版本仍需人工批准，与数据契约"不能把未识别内容当作完成"一致。
+   - 发布仍需管理员操作。
 4. **对象存储镜像：开发环境用 `pgsty/silo:RELEASE.2026-10-26T00-00-00Z`（MinIO 维护分支）。**
    - 原定的 Quay 镜像已无法匿名拉取，见第 5 节。
    - 代码只依赖 S3 API。

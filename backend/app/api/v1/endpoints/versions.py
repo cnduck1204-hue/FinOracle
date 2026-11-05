@@ -8,9 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import require_admin
 from app.db.session import get_db
 from app.models.user import User
+from app.rag.indexing import VectorStore, get_vector_store
 from app.schemas.document import ParseOptionsInput
 from app.schemas.ingestion import ChunkPage, JobResponse, VersionResponse, VersionUpdate
-from app.services import document_imports, document_library
+from app.services import document_imports, document_library, document_publishing
 from app.storage import ObjectStorage, get_storage
 
 router = APIRouter(dependencies=[Depends(require_admin)])
@@ -108,6 +109,59 @@ async def reparse_version(
     return await document_imports.reparse_version(version_id, options, user, session)
 
 
+@router.post(
+    "/{version_id}/approve",
+    response_model=JobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="批准向量化",
+    description=(
+        "为已解析或已下架的版本创建索引任务，完成后版本进入 ready。默认配置下完整解析的版本"
+        "会自动批准，需要人工批准的是含待 OCR 图片的版本和下架后要重新上线的版本。"
+    ),
+)
+async def approve_version(
+    version_id: UUID,
+    response: Response,
+    user: Annotated[User, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> JobResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await document_imports.approve_version(version_id, user, session)
+
+
+@router.post(
+    "/{version_id}/publish",
+    response_model=VersionResponse,
+    summary="发布版本",
+    description="发布 ready 状态的版本；同一制度原来的发布版本自动归档，不再进入检索。",
+)
+async def publish_version(
+    version_id: UUID,
+    response: Response,
+    user: Annotated[User, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    store: Annotated[VectorStore, Depends(get_vector_store)],
+) -> VersionResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await document_publishing.publish_version(version_id, user, session, store)
+
+
+@router.post(
+    "/{version_id}/withdraw",
+    response_model=VersionResponse,
+    summary="下架版本",
+    description="已发布版本改为归档，不再进入检索；切片与原件保留，可再次批准并发布。",
+)
+async def withdraw_version(
+    version_id: UUID,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    store: Annotated[VectorStore, Depends(get_vector_store)],
+) -> VersionResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await document_publishing.withdraw_version(version_id, session, store)
+
+
 @router.delete(
     "/{version_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -117,6 +171,7 @@ async def delete_version(
     version_id: UUID,
     session: Annotated[AsyncSession, Depends(get_db)],
     storage: Annotated[ObjectStorage, Depends(get_storage)],
+    store: Annotated[VectorStore, Depends(get_vector_store)],
 ) -> Response:
-    await document_imports.delete_version(version_id, session, storage)
+    await document_imports.delete_version(version_id, session, storage, store)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

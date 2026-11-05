@@ -80,6 +80,8 @@ for path in (".env", "tests", ".pytest_cache", ".ruff_cache"):
     assert not (Path("/app") / path).exists(), "Development file found in image"
 assert not list(Path("/app/app").rglob("__pycache__"))
 assert "MYSQL_ROOT_PASSWORD" not in os.environ
+# 向量化只在 worker 中执行，API 容器不持有 DashScope 密钥
+assert "DASHSCOPE_API_KEY" not in os.environ
 settings = get_settings()
 assert settings.mysql_host == "mysql"
 assert settings.mysql_port == 3306

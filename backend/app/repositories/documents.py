@@ -108,13 +108,17 @@ class DocumentVersionRepository:
             )
         )
 
-    async def get_published(self, document_id: UUID) -> DocumentVersion | None:
-        return await self.session.scalar(
-            select(DocumentVersion).where(
-                DocumentVersion.document_id == document_id,
-                DocumentVersion.status == "published",
-            )
+    async def get_published(
+        self, document_id: UUID, *, for_update: bool = False
+    ) -> DocumentVersion | None:
+        """for_update 时用锁定读取最新已提交的数据，发布替换前必须如此读取。"""
+        statement = select(DocumentVersion).where(
+            DocumentVersion.document_id == document_id,
+            DocumentVersion.status == "published",
         )
+        if for_update:
+            statement = statement.with_for_update()
+        return await self.session.scalar(statement)
 
     async def list_for_documents(
         self, document_ids: Sequence[UUID]
@@ -196,6 +200,15 @@ class DocumentChunkRepository:
         version.chunk_count = len(rows)
         await self.session.flush()
         return len(rows)
+
+    async def all_for_version(self, version_id: UUID) -> list[DocumentChunk]:
+        """版本的全部切片，按顺序；供向量化使用。"""
+        chunks = await self.session.scalars(
+            select(DocumentChunk)
+            .where(DocumentChunk.version_id == version_id)
+            .order_by(DocumentChunk.ordinal)
+        )
+        return list(chunks)
 
     async def list_for_version(
         self, version_id: UUID, *, offset: int, limit: int

@@ -1,7 +1,7 @@
 """worker 进程入口：python -m app.worker。
 
-只加载数据库、对象存储与解析配置，不需要 JWT 等认证密钥。收到 SIGTERM / SIGINT 后不再认领
-新任务，正在执行的任务完成后退出；被强制终止时，任务在租约到期后由其他 worker 接手。
+只加载数据库、对象存储、解析与向量化配置，不需要 JWT 等认证密钥。收到 SIGTERM / SIGINT 后
+不再认领新任务，正在执行的任务完成后退出；被强制终止时，任务在租约到期后由其他 worker 接手。
 """
 
 import asyncio
@@ -14,17 +14,25 @@ from app.db.engine import (
     create_engine,
     create_session_factory,
 )
+from app.rag.indexing import create_embedding, get_vector_store
 from app.storage import get_storage
+from app.worker.index import IndexHandler
 from app.worker.parse import ParseHandler
 from app.worker.runtime import Worker
 
 
 async def serve(settings: WorkerSettings) -> None:
     engine = create_engine(settings, isolation_level=WORKER_ISOLATION_LEVEL)
+    embedding = create_embedding()
     worker = Worker(
         create_session_factory(engine),
         get_storage(),
-        [ParseHandler(get_parsing_settings())],
+        [
+            ParseHandler(
+                get_parsing_settings(), auto_approve=settings.auto_approve_parsed
+            ),
+            IndexHandler(embedding, get_vector_store()),
+        ],
         poll_seconds=settings.worker_poll_seconds,
         lease_seconds=settings.job_lease_seconds,
     )
@@ -39,6 +47,7 @@ async def serve(settings: WorkerSettings) -> None:
     try:
         await worker.run(stop)
     finally:
+        await embedding.aclose()
         await engine.dispose()
 
 

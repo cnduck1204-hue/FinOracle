@@ -11,7 +11,7 @@ python3 scripts/init_env.py
 docker compose up --build -d --wait
 ```
 
-默认 API 端口为 8001，MySQL 为 3306，Redis 为 6379，Gotenberg（文档格式转换）为 3000，对象存储为 9000（Web 控制台 9001，用 `S3_ACCESS_KEY` / `S3_SECRET_KEY` 登录）；都仅绑定本机。首次启动需拉取约 420 MB 的 Gotenberg 镜像和约 230 MB 的对象存储镜像。
+默认 API 端口为 8001，MySQL 为 3306，Redis 为 6379，Gotenberg（文档格式转换）为 3000，对象存储为 9000（Web 控制台 9001，用 `S3_ACCESS_KEY` / `S3_SECRET_KEY` 登录），Milvus 向量库为 19530；都仅绑定本机。首次启动需拉取约 420 MB 的 Gotenberg 镜像、约 230 MB 的对象存储镜像和约 1.4 GB 的 Milvus 镜像。
 
 对象存储使用 Silo（`pgsty/silo`）：MinIO 社区版已停止维护，官方镜像不再公开提供，Silo 是它的维护分支，接口与数据格式相同。应用只通过 S3 API 访问，换成其他 S3 兼容存储只需修改 `S3_*` 配置。2026-11-05 之前生成的 `.env` 缺少 `S3_SECRET_KEY`，Compose 会提示该变量必填而拒绝启动；在 `backend/.env` 末尾追加一行随机值即可：
 
@@ -19,13 +19,13 @@ docker compose up --build -d --wait
 printf '\nS3_SECRET_KEY=%s\n' "$(python3 -c 'import secrets; print(secrets.token_hex(20))')" >> .env
 ```
 
-API 启动时运行 `alembic upgrade head`。可用 `docker compose logs api` 查看启动情况。`worker` 服务使用同一镜像，在 API 健康后启动，后台执行文档解析等任务；它只拿到数据库、对象存储和格式转换配置，没有认证密钥。处理情况用 `docker compose logs worker` 查看。
+API 启动时运行 `alembic upgrade head`。可用 `docker compose logs api` 查看启动情况。`worker` 服务使用同一镜像，在 API 健康后启动，后台执行文档解析与向量化；它只拿到数据库、对象存储、格式转换与向量化配置，没有认证密钥。处理情况用 `docker compose logs worker` 查看。向量化需要阿里云百炼（DashScope）的 API Key：在启动 Compose 的终端或 `backend/.env` 中设置 `DASHSCOPE_API_KEY`（终端中的同名变量优先）；未设置或无效时解析照常完成，索引任务失败并提示 `EMBEDDING_AUTH_FAILED` 或缺少密钥，更正后重启 worker 并在任务列表中重试。
 
 本机调试应用需要安装 [uv](https://docs.astral.sh/uv/)，使用容器中的数据库和缓存：
 
 ```sh
 uv sync --locked
-docker compose up -d --wait mysql redis minio
+docker compose up -d --wait mysql redis minio milvus
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
@@ -68,7 +68,10 @@ uv run python -m app.worker
 | GET | `/admin/versions/{version_id}/chunks` | 版本切片分页 | 200 |
 | GET | `/admin/versions/{version_id}/file` | 原件或可预览的 PDF（`variant=original\|pdf`） | 200 |
 | POST | `/admin/versions/{version_id}/reparse` | 用新参数或原参数重新解析 | 202 |
-| DELETE | `/admin/versions/{version_id}` | 删除未发布的版本及其切片、任务与文件 | 204 |
+| POST | `/admin/versions/{version_id}/approve` | 批准向量化（自动批准未覆盖的版本，或下架后重新上线） | 202 |
+| POST | `/admin/versions/{version_id}/publish` | 发布 ready 版本，原发布版本自动归档 | 200 |
+| POST | `/admin/versions/{version_id}/withdraw` | 下架已发布版本 | 200 |
+| DELETE | `/admin/versions/{version_id}` | 删除未发布的版本及其切片、任务、文件与向量 | 204 |
 
 注册提交 `username`、`email`、`password`、`confirm_password`；登录提交 `identifier`、`password`；刷新提交 `refresh_token`。退出与个人信息接口使用 `Authorization: Bearer <access_token>`。刷新接口不要求 Access Token。
 
@@ -108,6 +111,10 @@ Access Token 默认 30 分钟，Refresh Token 默认 7 天。刷新沿用同一�
 | `MINIO_PORT`、`MINIO_CONSOLE_PORT` | Compose 对外端口，默认 9000、9001 |
 | `WORKER_POLL_SECONDS` | worker 空闲时的轮询间隔，默认 2 秒 |
 | `JOB_LEASE_SECONDS` | 任务租约，默认 60 秒（至少 20）；执行中每 5 秒续租，worker 退出后租约到期，任务由其他 worker 接手 |
+| `AUTO_APPROVE_PARSED` | `true`：完整解析的版本自动向量化；`false` 时须调用批准接口。含待 OCR 图片的版本总是需要人工批准 |
+| `DASHSCOPE_API_KEY` | 向量化密钥，只传给 worker |
+| `EMBEDDING_BASE_URL`、`EMBEDDING_MODEL`、`EMBEDDING_DIMENSION` | 默认北京地域、`text-embedding-v4`、1024 维；离线入库与在线查询必须一致，更换后写入新的 Milvus 集合 |
+| `MILVUS_URI`、`MILVUS_PORT` | 向量库地址（容器内 `http://milvus:19530`）与 Compose 对外端口 |
 
 管理员配置全部未设置时跳过初始化，部分配置会拒绝启动。不提供默认管理员凭据，初始化脚本也不生成管理员密码。已有管理员时直接跳过创建，保留当前用户名、邮箱、密码和状态；管理员修改个人资料后，原初始化配置不会阻止重启。仅在尚无管理员时使用配置创建首个管理员，不提升已有普通用户。
 
@@ -180,13 +187,14 @@ app/rag/parsing/
 ## 代码组织
 
 - `api/`：请求模型绑定、认证依赖、响应和路由。
-- `services/`：注册、登录、刷新、退出的业务规则及事务边界；`document_parsing.py` 为接口、命令行与 worker 共用的解析服务；`document_imports.py`（导入、重试、重新解析、删除）与 `document_library.py`（制度、版本、切片、任务查询与原件读取）为入库管理，错误码集中在 `document_errors.py`。
+- `services/`：注册、登录、刷新、退出的业务规则及事务边界；`document_parsing.py` 为接口、命令行与 worker 共用的解析服务；`document_imports.py`（导入、重试、重新解析、删除）与 `document_library.py`（制度、版本、切片、任务查询与原件读取）为入库管理，`document_publishing.py` 负责发布与下架，错误码集中在 `document_errors.py`。
 - `repositories/`、`models/`、`db/`：数据库访问、表模型和连接生命周期；`db/engine.py` 提供不读取配置的连接工厂，供 worker 使用。
 - `security/`：线程池中的 Argon2 运算、JWT 签发和校验。
 - `cache/`：失败计数、会话及令牌轮换的原子操作。
 - `core/`、`middleware/`：配置、统一错误、JSON 日志和请求追踪。
 - `rag/parsing/`：文档解析、OCR、清洗与切片；Parser、OCR、Chunker 各占一个目录，按基类实现并登记，结构见上文。
 - `worker/`：后台任务。`runtime.py` 负责认领（`FOR UPDATE SKIP LOCKED`，连接使用 READ COMMITTED）、续租、进度、重试与失败处理；`parse.py` 为解析任务。设计与状态流转见[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)第 7 节。
+- `rag/indexing/`：向量化（`EmbeddingProvider`，默认 DashScope）、向量库（`VectorStore`，默认 Milvus，含 BM25 稀疏向量）与向量化文本规则；worker 的 `index.py` 为索引任务。
 - `storage/`：对象存储接口 `ObjectStorage` 与 S3 API 实现，对象键规则在 `storage/keys.py`。方法为同步调用（API 中经线程池调用）；对象不存在时抛出 `FileNotFoundError`，存储不可用返回 503 `STORAGE_UNAVAILABLE`。
 
 MySQL 保存用户，以及入库所需的制度、版本、切片和导入任务（表结构见[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)第 6 节）；Redis 保存带有效期的会话状态，不保存原始令牌。会话创建、刷新轮换与退出分别通过 Lua 脚本原子执行。退出只撤销当前会话，不影响该账号的其他登录。
@@ -216,7 +224,7 @@ uv run python -m tests.integration
 uv run python -m tests.integration --fresh-install
 ```
 
-检查覆盖真实 HTTP 认证流程、事务回滚、Redis 回复丢失、刷新重放、并发轮换、退出登录与会话隔离，以及对象存储的读写、自动建桶和凭据错误（在临时桶中进行，结束后删除），入库表的数据库约束，worker 的并发认领与租约接管，和经 Compose 中 worker 执行的真实解析任务（.doc 经 Gotenberg 转换、损坏文件直接失败），以及通过 API 的完整入库流程（上传、解析、读取切片与原件、重复上传、重新解析、删除）。每项使用唯一测试数据并清理自己的记录。首次安装检查创建临时 Compose 项目和卷，只删除自己创建的临时资源。
+检查覆盖真实 HTTP 认证流程、事务回滚、Redis 回复丢失、刷新重放、并发轮换、退出登录与会话隔离，以及对象存储的读写、自动建桶和凭据错误（在临时桶中进行，结束后删除），入库表的数据库约束，worker 的并发认领与租约接管，和经 Compose 中 worker 执行的真实解析任务（.doc 经 Gotenberg 转换、损坏文件直接失败），以及通过 API 的完整入库流程（上传、解析、读取切片与原件、重复上传、重新解析、删除）；最后一项检查经 DashScope 与 Milvus 完成自动批准、向量化、BM25 与向量检索、发布替换、下架与重新上线，需要有效的 `DASHSCOPE_API_KEY`，未设置时跳过。每项使用唯一测试数据并清理自己的记录。首次安装检查创建临时 Compose 项目和卷，只删除自己创建的临时资源。
 
 Postman Collection 与空白凭据环境位于 [postman/](postman/)。仅在可丢弃本地环境显式开启后运行，默认管理员流程关闭；账号与令牌串联说明见 [API 交接](../docs/backend-handoff.md)。
 
@@ -230,4 +238,4 @@ uv run python scripts/benchmark.py --allow-disposable-users --samples 20 --warmu
 
 ## 下一阶段
 
-用户资料修改、管理员初始化与用户管理由本次后端交付覆盖；资料编辑及管理员页面由前端团队接入。文档解析已提供离线命令（见上文）；文档入库按[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)分步实施，目前完成对象存储、入库数据表、后台解析任务和管理端入库接口；批准、发布、向量化、检索和 RAG 问答尚未实现。配套认证前端运行方式见[前端说明](../frontend/README.md)，后端契约见 [API 交接](../docs/backend-handoff.md)，阶段背景见[基础需求](../docs/superpowers/specs/2026-09-20-backend-foundation-prd.md)。
+用户资料修改、管理员初始化与用户管理由本次后端交付覆盖；资料编辑及管理员页面由前端团队接入。文档解析已提供离线命令（见上文）；文档入库按[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)分步实施，目前完成对象存储、入库数据表、后台解析与向量化任务、管理端入库与发布接口；检索和 RAG 问答尚未实现。配套认证前端运行方式见[前端说明](../frontend/README.md)，后端契约见 [API 交接](../docs/backend-handoff.md)，阶段背景见[基础需求](../docs/superpowers/specs/2026-09-20-backend-foundation-prd.md)。

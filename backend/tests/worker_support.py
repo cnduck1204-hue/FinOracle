@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.db.base import Base
 from app.db.engine import create_session_factory
 from app.models import Document, DocumentVersion, ImportJob
+from app.rag.indexing import EmbeddingProvider, VectorRecord, VectorStore
+from app.rag.indexing.errors import vector_store_unavailable
 from app.storage import ObjectInfo, ObjectStorage, check_key
 from app.storage.errors import storage_unavailable
 from app.storage.keys import original_key
@@ -157,3 +159,54 @@ async def seed(
 async def load(env: SimpleNamespace, model, identifier):
     async with env.sessions() as session:
         return await session.get(model, identifier)
+
+
+class FakeEmbedding(EmbeddingProvider):
+    """按文本长度生成确定的向量，并记录每批文本；fail_with 不为空时抛出该错误。"""
+
+    name = "fake"
+    model = "fake-embedding"
+    dimension = 4
+
+    def __init__(self, max_batch_size: int = 2) -> None:
+        self.max_batch_size = max_batch_size
+        self.batches: list[list[str]] = []
+        self.fail_with: Exception | None = None
+
+    async def embed_documents(self, texts):
+        if self.fail_with is not None:
+            raise self.fail_with
+        assert len(texts) <= self.max_batch_size
+        self.batches.append(list(texts))
+        return [[float(len(text)), 1.0, 0.0, 0.0] for text in texts]
+
+
+class MemoryVectorStore(VectorStore):
+    def __init__(self) -> None:
+        self.records: dict[int, VectorRecord] = {}
+        self.unavailable = False
+        self.ensured = 0
+
+    def _check(self) -> None:
+        if self.unavailable:
+            raise vector_store_unavailable()
+
+    def ensure_collection(self) -> None:
+        self._check()
+        self.ensured += 1
+
+    def upsert(self, records) -> None:
+        self._check()
+        for record in records:
+            self.records[record.chunk_id] = record
+
+    def delete_by_version(self, version_id) -> None:
+        self._check()
+        self.records = {
+            key: record
+            for key, record in self.records.items()
+            if record.version_id != version_id
+        }
+
+    def by_version(self, version_id) -> list[VectorRecord]:
+        return [r for r in self.records.values() if r.version_id == version_id]
