@@ -116,7 +116,7 @@ def test_form_options_are_applied(admin_client):
         ({"file": ("empty.txt", b"")}, {"ocr": "none"}, 422, "DOCUMENT_INVALID"),
         (
             {"file": ("a.txt", b"x")},
-            {"ocr": "tesseract"},
+            {"ocr": "unknown-ocr"},
             422,
             "REQUEST_VALIDATION_ERROR",
         ),

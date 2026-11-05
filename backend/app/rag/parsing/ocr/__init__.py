@@ -6,11 +6,14 @@
 
 from app.rag.parsing.ocr.base import OcrLine, OCRProvider
 from app.rag.parsing.ocr.rapid_ocr import RapidOcrProvider
+from app.rag.parsing.ocr.tesseract import TesseractOcrProvider
 from app.rag.parsing.options import AUTO, DEFAULT_MIN_OCR_CONFIDENCE
 
 NO_OCR = "none"
+# auto 按此顺序选择已安装的实现：RapidOCR 中文识别更准，Tesseract 更轻量，Docker 镜像内置
 OCR_PROVIDERS: dict[str, type[OCRProvider]] = {
     RapidOcrProvider.name: RapidOcrProvider,
+    TesseractOcrProvider.name: TesseractOcrProvider,
 }
 OCR_CHOICES = (AUTO, *OCR_PROVIDERS, NO_OCR)
 

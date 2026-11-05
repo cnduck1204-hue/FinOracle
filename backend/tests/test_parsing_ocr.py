@@ -1,3 +1,5 @@
+import shutil
+import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -11,9 +13,32 @@ from app.rag.parsing.ocr import (
     OCRProvider,
     create_ocr,
     rapid_ocr,
+    tesseract,
 )
 from app.rag.parsing.ocr.rapid_ocr import RapidOcrProvider
+from app.rag.parsing.ocr.tesseract import TesseractOcrProvider, lines_from_tsv
 from tests.parsing_samples import make_pdf, text_image
+
+TSV_HEADER = "\t".join(
+    [
+        "level",
+        "page_num",
+        "block_num",
+        "par_num",
+        "line_num",
+        "word_num",
+        "left",
+        "top",
+        "width",
+        "height",
+        "conf",
+        "text",
+    ]
+)
+
+
+def tsv_row(level: int, block: int, line: int, conf: float, text: str) -> str:
+    return "\t".join(map(str, [level, 1, block, 1, line, 1, 0, 0, 10, 10, conf, text]))
 
 
 class StubOcr(OCRProvider):
@@ -81,7 +106,7 @@ def test_create_ocr_picks_by_name_or_first_available(monkeypatch):
     # 显式指定时由实现自身报告依赖缺失
     assert isinstance(create_ocr("missing"), MissingOcr)
     with pytest.raises(ValueError):
-        create_ocr("tesseract")
+        create_ocr("unknown-ocr")
 
     monkeypatch.setattr(ocr_package, "OCR_PROVIDERS", {"missing": MissingOcr})
     assert create_ocr("auto") is None
@@ -103,3 +128,70 @@ def test_rapidocr_reads_rendered_scan(tmp_path):
     assert result.status == "completed"
     assert result.chunks[0].content == "Article 4 capital"
     assert result.chunks[0].sources == ["ocr"]
+
+
+def test_tesseract_tsv_words_are_grouped_into_lines():
+    tsv = "\n".join(
+        [
+            TSV_HEADER,
+            tsv_row(4, 1, 1, -1, ""),
+            tsv_row(5, 1, 1, 95, " "),
+            tsv_row(5, 1, 1, 90, "第一条"),
+            tsv_row(5, 1, 1, 80, "资本"),
+            tsv_row(5, 1, 1, 70, "Basel"),
+            tsv_row(5, 1, 1, 60, "III"),
+            tsv_row(5, 2, 1, 20, "噪声"),
+        ]
+    )
+
+    lines = lines_from_tsv(tsv)
+
+    assert [line.text for line in lines] == ["第一条资本Basel III", "噪声"]
+    assert [line.confidence for line in lines] == [
+        pytest.approx(0.75),
+        pytest.approx(0.2),
+    ]
+
+
+def test_tesseract_runs_cli_on_stdin_and_filters_lines(monkeypatch):
+    calls = []
+    output = "\n".join(
+        [TSV_HEADER, tsv_row(5, 1, 1, 92, "第一条"), tsv_row(5, 2, 1, 30, "噪声")]
+    )
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, stdout=output.encode())
+
+    monkeypatch.setattr(tesseract.shutil, "which", lambda name: "/usr/bin/tesseract")
+    monkeypatch.setattr(tesseract.subprocess, "run", fake_run)
+
+    lines = TesseractOcrProvider().recognize(b"png-bytes")
+
+    [(command, kwargs)] = calls
+    assert [line.text for line in lines] == ["第一条"]
+    assert TesseractOcrProvider.available()
+    assert command[:3] == ["/usr/bin/tesseract", "stdin", "stdout"]
+    assert command[command.index("-l") + 1] == "chi_sim+eng"
+    assert command[command.index("--psm") + 1] == "6"
+    assert command[-1] == "tsv"
+    assert (kwargs["input"], kwargs["check"]) == (b"png-bytes", True)
+
+
+def test_tesseract_reports_missing_binary(monkeypatch):
+    monkeypatch.setattr(tesseract.shutil, "which", lambda name: None)
+    assert TesseractOcrProvider.available() is False
+    with pytest.raises(AppException) as exc:
+        TesseractOcrProvider()
+    assert exc.value.code == "OCR_UNAVAILABLE"
+
+
+@pytest.mark.skipif(shutil.which("tesseract") is None, reason="tesseract not installed")
+def test_tesseract_reads_rendered_scan(tmp_path):
+    from app.rag.parsing import parse_file
+
+    path = make_pdf(tmp_path / "scan.pdf", [[("image", text_image(), 450)]])
+    result = parse_file(path, ocr=TesseractOcrProvider())
+
+    assert result.status == "completed"
+    assert result.chunks[0].content == "Article 4 capital"

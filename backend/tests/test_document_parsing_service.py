@@ -40,7 +40,7 @@ def test_request_defaults_and_validation():
         "include_blocks": False,
     }
     invalid = [
-        {"ocr": "tesseract"},
+        {"ocr": "unknown-ocr"},
         {"chunker": "semantic"},
         {"max_chunk_chars": 50},
         {"max_chunk_chars": 200, "chunk_overlap": 200},
