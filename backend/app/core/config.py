@@ -6,6 +6,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.schemas.auth import RegisterRequest
 
+# 各配置类共用：从 backend/.env 与环境变量读取，变量名不区分大小写
+_ENV_SOURCE = SettingsConfigDict(
+    env_file=".env",
+    env_file_encoding="utf-8",
+    case_sensitive=False,
+    extra="ignore",
+    hide_input_in_errors=True,
+)
+
 
 class Settings(BaseSettings):
     """FinOracle 应用配置"""
@@ -90,15 +99,36 @@ class Settings(BaseSettings):
 
         return value
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-        hide_input_in_errors=True,
-    )
+    model_config = _ENV_SOURCE
+
+
+class ParsingSettings(BaseSettings):
+    """文档解析中与部署机器相关的配置；不含密钥，命令行无需数据库配置即可加载。
+
+    解析算法参数见 app.rag.parsing.options，不从环境变量读取。
+    """
+
+    # Gotenberg 地址，如 http://gotenberg:3000；配置后 .doc 等格式交给它转换为 PDF
+    gotenberg_url: str | None = None
+    # 未配置 Gotenberg 时使用本机 LibreOffice；为空时从 PATH 查找 soffice
+    soffice_path: str | None = None
+    # 单个文档格式转换的超时
+    conversion_timeout_seconds: float = Field(default=120, gt=0)
+
+    @field_validator("gotenberg_url", "soffice_path")
+    @classmethod
+    def blank_as_none(cls, value: str | None) -> str | None:
+        # .env 中留空的配置项视为未配置
+        return (value or "").strip() or None
+
+    model_config = _ENV_SOURCE
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+@lru_cache
+def get_parsing_settings() -> ParsingSettings:
+    return ParsingSettings()
