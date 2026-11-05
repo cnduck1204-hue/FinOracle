@@ -19,9 +19,9 @@ SETTINGS = ParsingSettings(_env_file=None)
 
 @pytest.fixture(autouse=True)
 def fresh_ocr_cache():
-    document_parsing._ocr_provider.cache_clear()
+    document_parsing.ocr_provider.cache_clear()
     yield
-    document_parsing._ocr_provider.cache_clear()
+    document_parsing.ocr_provider.cache_clear()
 
 
 def upload(name: str, data: bytes, size: int | None = None) -> UploadFile:

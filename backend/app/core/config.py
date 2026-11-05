@@ -16,7 +16,19 @@ _ENV_SOURCE = SettingsConfigDict(
 )
 
 
-class Settings(BaseSettings):
+class DatabaseSettings(BaseSettings):
+    """MySQL 连接配置。worker 只加载这部分与其他所需配置，不接触 JWT 等认证密钥。"""
+
+    mysql_host: str = "127.0.0.1"
+    mysql_port: int = 3306
+    mysql_database: str = "finoracle"
+    mysql_user: str = "finoracle"
+    mysql_password: SecretStr
+
+    model_config = _ENV_SOURCE
+
+
+class Settings(DatabaseSettings):
     """FinOracle 应用配置"""
 
     app_name: str = "FinOracle API"
@@ -27,12 +39,6 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
 
     openapi_enabled: bool = True
-
-    mysql_host: str = "127.0.0.1"
-    mysql_port: int = 3306
-    mysql_database: str = "finoracle"
-    mysql_user: str = "finoracle"
-    mysql_password: SecretStr
 
     redis_host: str = "127.0.0.1"
     redis_port: int = 6379
@@ -150,6 +156,16 @@ class StorageSettings(BaseSettings):
         return value
 
     model_config = _ENV_SOURCE
+
+
+class WorkerSettings(DatabaseSettings):
+    """worker 进程配置：数据库连接与任务调度参数。"""
+
+    log_level: str = "INFO"
+    # 没有任务时的轮询间隔
+    worker_poll_seconds: float = Field(default=2, gt=0)
+    # 任务租约；worker 每 5 秒续租一次，进程退出后租约到期，任务由其他 worker 接手
+    job_lease_seconds: int = Field(default=60, ge=20)
 
 
 @lru_cache

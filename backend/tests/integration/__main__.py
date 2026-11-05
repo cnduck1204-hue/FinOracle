@@ -9,6 +9,7 @@ MODULES = (
     "storage",
     "database_schema",
     "document_schema",
+    "worker",
     "registration_transactions",
     "login_transactions",
     "refresh_transactions",

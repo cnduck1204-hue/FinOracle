@@ -32,14 +32,14 @@ def make_user(role: str) -> User:
 def client():
     client = TestClient(app, raise_server_exceptions=False)
     previous = app.dependency_overrides.copy()
-    document_parsing._ocr_provider.cache_clear()
+    document_parsing.ocr_provider.cache_clear()
     try:
         yield client
     finally:
         client.close()
         app.dependency_overrides.clear()
         app.dependency_overrides.update(previous)
-        document_parsing._ocr_provider.cache_clear()
+        document_parsing.ocr_provider.cache_clear()
 
 
 @pytest.fixture

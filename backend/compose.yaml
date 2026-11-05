@@ -141,6 +141,39 @@ services:
       timeout: 10s
       retries: 10
       start_period: 20s
+  # 后台执行解析等耗时任务。使用 API 镜像，仅传入数据库、对象存储与格式转换配置，不含认证密钥
+  worker:
+    image: finoracle-api:local
+    # 镜像由 api 服务构建，不从镜像仓库拉取
+    pull_policy: never
+    init: true
+    command: ["python", "-m", "app.worker"]
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-finoracle}
+      MYSQL_USER: ${MYSQL_USER:-finoracle}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      GOTENBERG_URL: http://gotenberg:3000
+      CONVERSION_TIMEOUT_SECONDS: "${CONVERSION_TIMEOUT_SECONDS:-120}"
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-finoracle}
+      S3_SECRET_KEY: "${S3_SECRET_KEY:?S3_SECRET_KEY is required}"
+      S3_BUCKET: ${S3_BUCKET:-finoracle-documents}
+      WORKER_POLL_SECONDS: "${WORKER_POLL_SECONDS:-2}"
+      JOB_LEASE_SECONDS: "${JOB_LEASE_SECONDS:-60}"
+    # 停止时先完成当前任务；超时被终止的任务在租约到期后由其他 worker 重新执行
+    stop_grace_period: 30s
+    depends_on:
+      # API 启动时执行数据库迁移，健康后表结构已就绪
+      api:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      gotenberg:
+        condition: service_started
 volumes:
   mysql_data:
   redis_data:

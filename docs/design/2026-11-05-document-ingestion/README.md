@@ -59,7 +59,7 @@
 Compose 新增两个服务：
 
 - `minio`：文件存储（第 1 步已加入）。
-- `worker`：与 API 使用同一镜像，启动命令为 `python -m app.worker`，依赖 `api` 健康（迁移由 API 启动时执行）。第 3 步有了 worker 代码后再加入。
+- `worker`（第 3 步已加入）：与 API 使用同一镜像，启动命令为 `python -m app.worker`，依赖 `api` 健康（迁移由 API 启动时执行）。
 
 ## 5 文件存储（MinIO）
 
@@ -243,25 +243,44 @@ uploaded → parsing → parsed ─批准→ indexing → ready ─发布→ pub
 
 - 队列就是 import_jobs 表。API 在登记版本的同一事务中插入任务，不会出现"有版本无任务"或"有任务无版本"。
 
-**worker 主循环**
+**worker 主循环**（第 3 步已实现，代码在 `app/worker/`）
 
-1. 认领任务：
+1. 认领任务：先接手租约已过期的执行中任务，再取已到执行时间的排队任务，分两条查询：
    ```sql
-   SELECT … WHERE (status='queued' AND run_after<=now) OR (status='running' AND lease_expires_at<now)
-   ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED
+   SELECT … WHERE status='running' AND lease_expires_at<now
+   ORDER BY lease_expires_at, id LIMIT 1 FOR UPDATE SKIP LOCKED
+   SELECT … WHERE status='queued' AND run_after<=now
+   ORDER BY run_after, id LIMIT 1 FOR UPDATE SKIP LOCKED
    ```
-   将任务置为 running，attempts 加 1，租约设为当前时间加 60 秒，然后提交。
-2. 执行期间每 20 秒续租一次。阶段和进度节流写入，至少间隔 2 秒。
-3. 成功时任务置为 succeeded，版本进入下一个状态。失败按错误类型处理：
-   - 业务错误（文件损坏、加密、不支持的类型，即 AppException 4xx）：直接置为 failed，不重试。
-   - 基础设施错误（Gotenberg 超时，MinIO、MySQL、向量库或 Embedding 不可用）：按 30 秒、2 分钟退避重试，超过 max_attempts 后置为 failed。
-4. 进程崩溃后，任务租约过期，会被其他 worker 重新认领。
+   将任务置为 running，attempts 加 1，租约设为当前时间加 60 秒，然后提交。实测确认的两个前提：
+   - **排序必须能按索引顺序读取**：分别对应 `(status, run_after)` 和 `(status, lease_expires_at)` 两个索引（二级索引末尾隐含主键 id）。如果合成一条 OR 查询并按 created_at 排序，MySQL 会先排序，FOR UPDATE 锁住所有候选行，另一个 worker 用 SKIP LOCKED 时一行也取不到。
+   - **worker 的数据库连接使用 READ COMMITTED**：默认的 REPEATABLE READ 下，锁定读会加间隙锁，阻塞其他 worker 更新各自任务的索引项，并发认领因此串行，甚至锁等待超时。只有 worker 的引擎改隔离级别，API 不变。
+2. 执行期间每 5 秒续租一次，同时写入阶段和进度（stage、progress_current、progress_total）。续租发现任务已被其他 worker 接手时停止续租。
+3. 处理器写入结果时，在同一事务中锁定任务并确认仍归自己所有，再写结果并标记成功。租约过期被接手后，迟到的结果不会覆盖新的执行。
+4. 失败时按错误类型处理：
+   - 业务错误（AppException 4xx，例如文件损坏、加密、不支持的类型、没有文本）：直接置为 failed，不重试，版本置为 failed。
+   - 其他错误（AppException 5xx，例如存储或 Gotenberg 不可用；数据库或文件系统错误；未预期的异常）：第 1、2 次失败后分别等待 30 秒、2 分钟重试，版本保持 parsing；超过 max_attempts 后置为 failed。
+5. 进程崩溃后，任务租约过期，会被其他 worker 重新认领；崩溃同样消耗尝试次数，用尽后直接置为 failed（`JOB_ATTEMPTS_EXHAUSTED`）。
+6. 收到 SIGTERM 时不再认领新任务，当前任务完成后退出（Compose 中 `stop_grace_period` 为 30 秒）。
+
+**解析任务**
+
+- 依次为：下载原件；.doc、.rtf、.odt 先转换为 PDF，并保存为 `converted.pdf`；解析、OCR、切片；把清洗后的文本块保存为 `blocks.json`。最后在一个事务中替换切片、更新版本并标记任务成功。
+- 版本上记录的信息：
+  - `parse_stats`：ParseResult 的统计，另含 auto 时实际采用的 `chunker` 和 `ocr_provider`；
+  - `parse_warnings`；
+  - `parser_version`：取 `PARSER_VERSION`，解析输出规则变化时递增；
+  - `page_count`；
+  - `pdf_object_key`。
+- 解析结果为 empty 时，任务以 `DOCUMENT_EMPTY` 失败。needs_ocr 仍进入 parsed，由批准环节拦截。
+- 原件不存在时报 `DOCUMENT_FILE_MISSING`，保存的解析参数不合法时报 `PARSE_OPTIONS_INVALID`，两者都不重试。
 
 **并发与进度**
 
 - 每个 worker 进程同时只执行一个任务，因为 OCR 会占满 CPU。需要扩容时增加 worker 副本。
-- 没有任务时每 2 秒轮询一次。
-- 给 `parse_file` 增加可选的 progress 回调（阶段、当前页、总页数），不改变它现有的返回值和 CLI 行为。
+- 没有任务时每 2 秒轮询一次（`WORKER_POLL_SECONDS`），租约时长由 `JOB_LEASE_SECONDS` 配置（默认 60）。
+- `parse_file` 有可选的 progress 回调，报告 converting、parsing、ocr（逐张图片）和 chunking 四个阶段，不改变它的返回值和 CLI 行为。worker 另外报告 downloading 和 saving 阶段。
+- worker 只加载 `WorkerSettings`（数据库配置加调度参数）、`StorageSettings` 和 `ParsingSettings`，容器中没有 JWT 密钥和管理员凭据。
 
 **为什么用 MySQL 表做队列，不用 Celery / arq**
 
@@ -337,7 +356,7 @@ uploaded → parsing → parsed ─批准→ indexing → ready ─发布→ pub
 
 1. **基础设施**（2026-11-05 已完成）：Compose 增加 minio 服务；实现 ObjectStorage（首次写入时建桶）；增加 `S3_*` 配置项；为前端 Nginx 的 `admin/` 路径放宽上传限制。worker 服务移到第 3 步。
 2. **数据表**（2026-11-05 已完成）：迁移、模型和 repository。repository 只提供基本读写；任务认领与续租放在第 3 步，管理端列表筛选放在第 4 步。
-3. **任务框架与解析任务**：认领、续租、重试；实现 parse 任务和 progress 回调；转换后的 PDF 写入 MinIO。
+3. **任务框架与解析任务**（2026-11-05 已完成）：认领、续租、重试；实现 parse 任务和 progress 回调；转换后的 PDF 写入对象存储；Compose 增加 worker 服务。另加迁移 `e43a1cf1d3d5`，为执行中任务的租约建索引。
 4. **管理 API**：导入、任务、制度、版本、切片、原文、重试和删除。
 5. **向量化与发布**：两个 Provider 的首个实现；approve → index；publish、withdraw 和 cleanup。
 6. **release 数据导入脚本**。

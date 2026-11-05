@@ -24,8 +24,9 @@ class ImportJob(Base):
     __tablename__ = "import_jobs"
 
     __table_args__ = (
-        # worker 按状态与可执行时间认领任务
+        # worker 按索引顺序认领：排队任务按可执行时间，执行中任务按租约到期时间
         Index("ix_import_jobs_status_run_after", "status", "run_after"),
+        Index("ix_import_jobs_status_lease", "status", "lease_expires_at"),
         Index("ix_import_jobs_version_id", "version_id"),
     )
 

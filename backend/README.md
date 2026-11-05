@@ -16,10 +16,10 @@ docker compose up --build -d --wait
 对象存储使用 Silo（`pgsty/silo`）：MinIO 社区版已停止维护，官方镜像不再公开提供，Silo 是它的维护分支，接口与数据格式相同。应用只通过 S3 API 访问，换成其他 S3 兼容存储只需修改 `S3_*` 配置。2026-11-05 之前生成的 `.env` 缺少 `S3_SECRET_KEY`，Compose 会提示该变量必填而拒绝启动；在 `backend/.env` 末尾追加一行随机值即可：
 
 ```sh
-printf '
-S3_SECRET_KEY=%s
-' "$(python3 -c 'import secrets; print(secrets.token_hex(20))')" >> .env
-```API 启动时运行 `alembic upgrade head`。可用 `docker compose logs api` 查看启动情况。
+printf '\nS3_SECRET_KEY=%s\n' "$(python3 -c 'import secrets; print(secrets.token_hex(20))')" >> .env
+```
+
+API 启动时运行 `alembic upgrade head`。可用 `docker compose logs api` 查看启动情况。`worker` 服务使用同一镜像，在 API 健康后启动，后台执行文档解析等任务；它只拿到数据库、对象存储和格式转换配置，没有认证密钥。处理情况用 `docker compose logs worker` 查看。
 
 本机调试应用需要安装 [uv](https://docs.astral.sh/uv/)，使用容器中的数据库和缓存：
 
@@ -31,6 +31,12 @@ uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 此时接口文档位于 `http://127.0.0.1:8000/docs`。从项目根目录调用时使用 `uv --directory backend run ...`，确保读取正确的 `.env`。
+
+本机运行 worker（另开终端；`.env` 中 `GOTENBERG_URL` 设为 `http://127.0.0.1:3000` 才能转换 .doc 等格式）。Compose 中的 worker 也会认领同一张任务表，调试本机 worker 时先执行 `docker compose stop worker`：
+
+```sh
+uv run python -m app.worker
+```
 
 停止完整环境用 `docker compose down`，数据会保留。不要为普通重启加 `--volumes`。已有 MySQL 持久卷的账号密码不会随着 `.env` 自动改变；更换密码需同步修改数据库账号。
 
@@ -67,7 +73,7 @@ Access Token 默认 30 分钟，Refresh Token 默认 7 天。刷新沿用同一�
 
 `.env.example` 列出完整默认项；真实 `.env` 不入库。`scripts/init_env.py` 为 MySQL 应用账号、root 账号和 JWT 分别生成随机值，已有 `.env` 会原样保留。
 
-配置按性质分三处：随部署机器变化的配置（含密钥与路径）定义在 `app/core/config.py`，值写在 `.env` 或环境变量中，其中 `Settings` 为应用配置，`ParsingSettings` 为不含密钥、命令行也能加载的解析配置，`StorageSettings` 为对象存储配置（worker 与导入脚本可单独加载）；解析算法的阈值和默认值在 `app/rag/parsing/options.py`，随代码修改和测试，不读环境变量；单次请求可调的解析参数见 `app/schemas/document.py`。
+配置按性质分三处：随部署机器变化的配置（含密钥与路径）定义在 `app/core/config.py`，值写在 `.env` 或环境变量中，其中 `Settings` 为应用配置（包含 `DatabaseSettings` 的数据库配置），`ParsingSettings` 为不含密钥、命令行也能加载的解析配置，`StorageSettings` 为对象存储配置，`WorkerSettings` 为 worker 的数据库与调度配置（worker 不加载 `Settings`，因此不需要 JWT 密钥）；解析算法的阈值和默认值在 `app/rag/parsing/options.py`，随代码修改和测试，不读环境变量；单次请求可调的解析参数见 `app/schemas/document.py`。
 
 | 配置 | 默认值 / 说明 |
 | --- | --- |
@@ -89,6 +95,8 @@ Access Token 默认 30 分钟，Refresh Token 默认 7 天。刷新沿用同一�
 | `S3_BUCKET` | 文档桶，默认 `finoracle-documents`；首次写入时自动创建 |
 | `S3_REGION` | `us-east-1` |
 | `MINIO_PORT`、`MINIO_CONSOLE_PORT` | Compose 对外端口，默认 9000、9001 |
+| `WORKER_POLL_SECONDS` | worker 空闲时的轮询间隔，默认 2 秒 |
+| `JOB_LEASE_SECONDS` | 任务租约，默认 60 秒（至少 20）；执行中每 5 秒续租，worker 退出后租约到期，任务由其他 worker 接手 |
 
 管理员配置全部未设置时跳过初始化，部分配置会拒绝启动。不提供默认管理员凭据，初始化脚本也不生成管理员密码。已有管理员时直接跳过创建，保留当前用户名、邮箱、密码和状态；管理员修改个人资料后，原初始化配置不会阻止重启。仅在尚无管理员时使用配置创建首个管理员，不提升已有普通用户。
 
@@ -162,12 +170,13 @@ app/rag/parsing/
 
 - `api/`：请求模型绑定、认证依赖、响应和路由。
 - `services/`：注册、登录、刷新、退出的业务规则及事务边界；`document_parsing.py` 为接口与命令行共用的解析服务。
-- `repositories/`、`models/`、`db/`：数据库访问、表模型和连接生命周期。
+- `repositories/`、`models/`、`db/`：数据库访问、表模型和连接生命周期；`db/engine.py` 提供不读取配置的连接工厂，供 worker 使用。
 - `security/`：线程池中的 Argon2 运算、JWT 签发和校验。
 - `cache/`：失败计数、会话及令牌轮换的原子操作。
 - `core/`、`middleware/`：配置、统一错误、JSON 日志和请求追踪。
 - `rag/parsing/`：文档解析、OCR、清洗与切片；Parser、OCR、Chunker 各占一个目录，按基类实现并登记，结构见上文。
-- `storage/`：对象存储接口 `ObjectStorage` 与 S3 API 实现。方法为同步调用（API 中经线程池调用）；对象不存在时抛出 `FileNotFoundError`，存储不可用返回 503 `STORAGE_UNAVAILABLE`。
+- `worker/`：后台任务。`runtime.py` 负责认领（`FOR UPDATE SKIP LOCKED`，连接使用 READ COMMITTED）、续租、进度、重试与失败处理；`parse.py` 为解析任务。设计与状态流转见[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)第 7 节。
+- `storage/`：对象存储接口 `ObjectStorage` 与 S3 API 实现，对象键规则在 `storage/keys.py`。方法为同步调用（API 中经线程池调用）；对象不存在时抛出 `FileNotFoundError`，存储不可用返回 503 `STORAGE_UNAVAILABLE`。
 
 MySQL 保存用户，以及入库所需的制度、版本、切片和导入任务（表结构见[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)第 6 节）；Redis 保存带有效期的会话状态，不保存原始令牌。会话创建、刷新轮换与退出分别通过 Lua 脚本原子执行。退出只撤销当前会话，不影响该账号的其他登录。
 
@@ -196,7 +205,7 @@ uv run python -m tests.integration
 uv run python -m tests.integration --fresh-install
 ```
 
-检查覆盖真实 HTTP 认证流程、事务回滚、Redis 回复丢失、刷新重放、并发轮换、退出登录与会话隔离，以及对象存储的读写、自动建桶和凭据错误（在临时桶中进行，结束后删除）。每项使用唯一测试数据并清理自己的记录。首次安装检查创建临时 Compose 项目和卷，只删除自己创建的临时资源。
+检查覆盖真实 HTTP 认证流程、事务回滚、Redis 回复丢失、刷新重放、并发轮换、退出登录与会话隔离，以及对象存储的读写、自动建桶和凭据错误（在临时桶中进行，结束后删除），入库表的数据库约束，worker 的并发认领与租约接管，和经 Compose 中 worker 执行的真实解析任务（.doc 经 Gotenberg 转换、损坏文件直接失败）。每项使用唯一测试数据并清理自己的记录。首次安装检查创建临时 Compose 项目和卷，只删除自己创建的临时资源。
 
 Postman Collection 与空白凭据环境位于 [postman/](postman/)。仅在可丢弃本地环境显式开启后运行，默认管理员流程关闭；账号与令牌串联说明见 [API 交接](../docs/backend-handoff.md)。
 
@@ -210,4 +219,4 @@ uv run python scripts/benchmark.py --allow-disposable-users --samples 20 --warmu
 
 ## 下一阶段
 
-用户资料修改、管理员初始化与用户管理由本次后端交付覆盖；资料编辑及管理员页面由前端团队接入。文档解析已提供离线命令（见上文）；文档入库按[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)分步实施，目前完成对象存储基础设施和入库数据表，上传入库、向量化、检索和 RAG 问答尚未实现。配套认证前端运行方式见[前端说明](../frontend/README.md)，后端契约见 [API 交接](../docs/backend-handoff.md)，阶段背景见[基础需求](../docs/superpowers/specs/2026-09-20-backend-foundation-prd.md)。
+用户资料修改、管理员初始化与用户管理由本次后端交付覆盖；资料编辑及管理员页面由前端团队接入。文档解析已提供离线命令（见上文）；文档入库按[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)分步实施，目前完成对象存储、入库数据表和后台解析任务，上传入库接口、向量化、检索和 RAG 问答尚未实现。配套认证前端运行方式见[前端说明](../frontend/README.md)，后端契约见 [API 交接](../docs/backend-handoff.md)，阶段背景见[基础需求](../docs/superpowers/specs/2026-09-20-backend-foundation-prd.md)。
