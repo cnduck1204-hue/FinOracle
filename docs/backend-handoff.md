@@ -38,7 +38,7 @@
 
 成功返回 200 `ParseResult`：`file_name`（上传时的原始文件名）、`file_type`、`sha256`、`size_bytes`、`page_count`（无分页格式为 null）、`status`、`chunker`、`ocr_provider`、`chunks`、`stats`、`warnings`，`converter`（`.doc` / `.rtf` / `.odt` 先转为 PDF 时为转换器名称，其余为 null），以及 `blocks`（未要求时为 null）。`status` 为 `completed`、`needs_ocr`（仍有图片未识别，例如服务端未安装 OCR）或 `empty`（没有可用文本）。每个切片含 `ordinal`、`chapter`、`section`、`article`（条号或“一、”序号）、`heading`、`part` / `part_count`、`content`、`page_start` / `page_end`（PDF 物理页序号）与 `sources`（`text` / `ocr`）。
 
-同一服务进程一次只解析一个文档，扫描件每页约 0.3–0.6 秒（Tesseract）至 2–3 秒（RapidOCR），客户端应展示进行中状态并避免重复提交。错误码：`DOCUMENT_UNSUPPORTED_TYPE`（415）、`DOCUMENT_TOO_LARGE` / `DOCUMENT_TOO_MANY_PAGES`（413）、`DOCUMENT_INVALID`（422，空文件、损坏、加密、内容与扩展名不符或无法转换）、`DOCUMENT_CONVERSION_UNAVAILABLE` / `OCR_UNAVAILABLE`（503，Gotenberg 不可用或超时，或服务端缺少显式指定的 OCR）、`REQUEST_VALIDATION_ERROR`（422）。前端经同源代理上传前，需要先放宽 Nginx 的请求体与读超时限制（当前为默认 1 MB、20 秒）。
+同一服务进程一次只解析一个文档，扫描件每页约 0.3–0.6 秒（Tesseract）至 2–3 秒（RapidOCR），客户端应展示进行中状态并避免重复提交。错误码：`DOCUMENT_UNSUPPORTED_TYPE`（415）、`DOCUMENT_TOO_LARGE` / `DOCUMENT_TOO_MANY_PAGES`（413）、`DOCUMENT_INVALID`（422，空文件、损坏、加密、内容与扩展名不符或无法转换）、`DOCUMENT_CONVERSION_UNAVAILABLE` / `OCR_UNAVAILABLE`（503，Gotenberg 不可用或超时，或服务端缺少显式指定的 OCR）、`REQUEST_VALIDATION_ERROR`（422）。前端同源代理已对 `/api/v1/admin/` 路径放宽到请求体 55 MB、读超时 180 秒；大文件或扫描件的解析预览可能超过 180 秒，仍以 API 直连为准。
 
 ## 错误与页面处理
 
