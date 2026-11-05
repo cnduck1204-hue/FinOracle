@@ -6,6 +6,7 @@
 import logging
 import os
 import re
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -44,6 +45,13 @@ class VectorRecord:
     vector: list[float]
 
 
+@dataclass(frozen=True, slots=True)
+class SearchHit:
+    chunk_id: int
+    # 稠密向量为余弦相似度，关键词为 BM25 分数；两者量纲不同，融合时只用名次
+    score: float
+
+
 class VectorStore(ABC):
     @abstractmethod
     def ensure_collection(self) -> None:
@@ -56,6 +64,18 @@ class VectorStore(ABC):
     @abstractmethod
     def delete_by_version(self, version_id: UUID) -> None:
         """删除版本的全部向量；集合或数据不存在时视为已删除。"""
+
+    @abstractmethod
+    def search_dense(
+        self, vector: Sequence[float], *, version_ids: Sequence[UUID], limit: int
+    ) -> list[SearchHit]:
+        """在指定版本中按向量相似度检索，按分数从高到低。"""
+
+    @abstractmethod
+    def search_keywords(
+        self, text: str, *, version_ids: Sequence[UUID], limit: int
+    ) -> list[SearchHit]:
+        """在指定版本中按 BM25 关键词检索（中文分词），按分数从高到低。"""
 
 
 def collection_name(prefix: str, model: str, dimension: int) -> str:
@@ -90,6 +110,8 @@ class MilvusVectorStore(VectorStore):
             )
         )
         self._client: Any = None
+        # 两路检索在两个线程中并发调用，客户端只创建一次
+        self._client_lock = threading.Lock()
 
     def ensure_collection(self) -> None:
         def ensure(client: Any) -> None:
@@ -130,6 +152,61 @@ class MilvusVectorStore(VectorStore):
                 client.delete(self.collection, filter=_version_filter(version_id))
 
         self._call(delete)
+
+    def search_dense(
+        self, vector: Sequence[float], *, version_ids: Sequence[UUID], limit: int
+    ) -> list[SearchHit]:
+        return self._search(
+            data=list(vector),
+            field="dense",
+            metric="COSINE",
+            version_ids=version_ids,
+            limit=limit,
+        )
+
+    def search_keywords(
+        self, text: str, *, version_ids: Sequence[UUID], limit: int
+    ) -> list[SearchHit]:
+        return self._search(
+            data=text,
+            field="sparse",
+            metric="BM25",
+            version_ids=version_ids,
+            limit=limit,
+        )
+
+    def _search(
+        self,
+        *,
+        data: Any,
+        field: str,
+        metric: str,
+        version_ids: Sequence[UUID],
+        limit: int,
+    ) -> list[SearchHit]:
+        if not version_ids:
+            return []
+
+        def search(client: Any) -> list[SearchHit]:
+            if not client.has_collection(self.collection):
+                return []
+            results = client.search(
+                self.collection,
+                data=[data],
+                anns_field=field,
+                limit=limit,
+                filter=_versions_filter(version_ids),
+                search_params={"metric_type": metric},
+                output_fields=["chunk_id"],
+                # 强一致：刚发布的版本立即可检索；单机实测仅多几毫秒
+                consistency_level="Strong",
+            )
+            return [
+                SearchHit(int(hit["entity"]["chunk_id"]), float(hit["distance"]))
+                for hit in results[0]
+            ]
+
+        return self._call(search)
 
     def count_by_version(self, version_id: UUID) -> int:
         """强一致地统计版本的向量数，供校验与测试。"""
@@ -187,7 +264,9 @@ class MilvusVectorStore(VectorStore):
     def _call(self, operation: Callable[[Any], Any]) -> Any:
         try:
             if self._client is None:
-                self._client = self._factory()
+                with self._client_lock:
+                    if self._client is None:
+                        self._client = self._factory()
             return operation(self._client)
         except (MilvusException, OSError) as error:
             logger.warning("vector_store_failed: %s", type(error).__name__)
@@ -197,3 +276,8 @@ class MilvusVectorStore(VectorStore):
 def _version_filter(version_id: UUID) -> str:
     # UUID 只含十六进制字符与连字符，可直接写入过滤表达式
     return f'version_id == "{UUID(str(version_id))}"'
+
+
+def _versions_filter(version_ids: Sequence[UUID]) -> str:
+    quoted = ", ".join(f'"{UUID(str(version_id))}"' for version_id in version_ids)
+    return f"version_id in [{quoted}]"

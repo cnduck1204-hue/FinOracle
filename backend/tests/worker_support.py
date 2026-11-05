@@ -1,6 +1,7 @@
 """worker 测试共用：内存对象存储、异步 SQLite 数据库、可控时钟与种子数据。"""
 
 import asyncio
+import math
 from collections.abc import Awaitable, Callable, Iterator
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -13,7 +14,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.db.base import Base
 from app.db.engine import create_session_factory
 from app.models import Document, DocumentVersion, ImportJob
-from app.rag.indexing import EmbeddingProvider, VectorRecord, VectorStore
+from app.rag.indexing import EmbeddingProvider, SearchHit, VectorRecord, VectorStore
 from app.rag.indexing.errors import vector_store_unavailable
 from app.storage import ObjectInfo, ObjectStorage, check_key
 from app.storage.errors import storage_unavailable
@@ -210,3 +211,33 @@ class MemoryVectorStore(VectorStore):
 
     def by_version(self, version_id) -> list[VectorRecord]:
         return [r for r in self.records.values() if r.version_id == version_id]
+
+    def _search(self, score, version_ids, limit) -> list[SearchHit]:
+        self._check()
+        allowed = set(version_ids)
+        hits = [
+            SearchHit(record.chunk_id, score(record))
+            for record in self.records.values()
+            if record.version_id in allowed
+        ]
+        hits = [hit for hit in hits if hit.score > 0]
+        hits.sort(key=lambda hit: (-hit.score, hit.chunk_id))
+        return hits[:limit]
+
+    def search_dense(self, vector, *, version_ids, limit) -> list[SearchHit]:
+        def cosine(record):
+            dot = sum(a * b for a, b in zip(vector, record.vector, strict=True))
+            norm = math.sqrt(sum(a * a for a in vector)) * math.sqrt(
+                sum(b * b for b in record.vector)
+            )
+            return dot / norm if norm else 0.0
+
+        return self._search(cosine, version_ids, limit)
+
+    def search_keywords(self, text, *, version_ids, limit) -> list[SearchHit]:
+        terms = {char for char in text if char.strip()}
+        return self._search(
+            lambda record: float(sum(char in record.text for char in terms)),
+            version_ids,
+            limit,
+        )

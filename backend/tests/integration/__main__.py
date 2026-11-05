@@ -23,6 +23,7 @@ MODULES = (
     "admin",
     # 依赖外部向量化服务与密钥，放在最后，凭据问题不影响其他检查
     "indexing",
+    "search",
 )
 
 

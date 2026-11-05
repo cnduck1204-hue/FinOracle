@@ -34,6 +34,12 @@ class EmbeddingProvider(ABC):
     async def embed_documents(self, texts: Sequence[str]) -> list[Vector]:
         """为待入库的文本生成向量，顺序与输入一致；texts 不超过 max_batch_size。"""
 
+    async def embed_query(self, text: str) -> Vector:
+        """为检索问题生成向量。DashScope 兼容接口不区分查询与文档（text_type 被忽略，
+        实测两者向量完全相同），因此与 embed_documents 走同一请求。"""
+        (vector,) = await self.embed_documents([text])
+        return vector
+
     async def aclose(self) -> None:
         """释放连接；进程退出时调用。"""
 

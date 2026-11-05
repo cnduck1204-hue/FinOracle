@@ -97,6 +97,23 @@
   - `JOB_ATTEMPTS_EXHAUSTED`、`STORAGE_UNAVAILABLE`、`DOCUMENT_CONVERSION_UNAVAILABLE`、`EMBEDDING_UNAVAILABLE`、`VECTOR_STORE_UNAVAILABLE`：可重试；
   - `EMBEDDING_AUTH_FAILED`：向量化密钥无效，需运维更正配置后重试；`EMBEDDING_REJECTED`：内容被向量化服务拒绝。
 
+## 条文检索（2026-11-05 新增）
+
+对应设计页 07 全文检索，也是问答的检索基础。需要登录（普通用户即可），只检索已发布版本，响应禁止缓存。
+
+`POST /search` 请求体：
+- `query`：必填，1–1000 字，去首尾空白；
+- `document_ids`：可选，最多 50 个制度 ID，只在这些制度中检索，对应问答首页的"选择制度范围"；
+- `top_k`：默认 8，范围 1–20。
+
+返回 `{query, results}`，`results` 按相关度从高到低。每项包含：
+- **相关度**：`chunk_id`、`score`（融合分数，只用于排序）；`dense_rank` / `dense_score`、`keyword_rank` / `keyword_score`（两路各自的名次与分数，未进入该路时为 null）。
+- `document`：`id`、`title`、`issuer`。
+- `version`：`id`、`document_number`、`version_note`、`published_date`、`effective_date`、`validity_status`、`source_url`。`validity_status` 为 `unknown` 时不能显示为现行有效。
+- **条文位置与内容**：`ordinal`、`chapter`、`section`、`article`、`heading`、`content`、`page_start` / `page_end`。
+
+没有匹配或没有已发布制度时返回空数组。检索服务暂不可用时返回 503 `SEARCH_UNAVAILABLE`；参数不合法时返回 422。
+
 ## 错误与页面处理
 
 所有错误响应均为 `{code,message,request_id}`，例如 `{"code":"REQUEST_VALIDATION_ERROR","message":"请求参数不合法","request_id":"..."}`。页面可显示 `message`，排障记录 `request_id`，不得记录密码、完整令牌或完整认证请求/响应。
