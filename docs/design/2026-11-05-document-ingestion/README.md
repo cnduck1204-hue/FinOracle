@@ -102,6 +102,8 @@ Compose 新增两个服务：
 
 制度（documents）和版本（document_versions）分为两张表：一个制度可以有多个版本，但最多只有一个已发布版本。文号、生效日期、时效状态随修订变化，所以放在版本表上。
 
+第 2 步已按本节建表（迁移 `1793832fdc5b`，模型在 `app/models/document.py`、`app/models/import_job.py`）。所有 `created_by` 均可为空，供导入脚本、自动清理等系统操作使用。
+
 ### documents
 
 | 列 | 类型 | 说明 |
@@ -110,9 +112,10 @@ Compose 新增两个服务：
 | external_id | VARCHAR(128) NULL UNIQUE | 外部数据集的 doc_id |
 | title | VARCHAR(255) | 正式名称 |
 | issuer | VARCHAR(255) NULL | 发文机构 |
-| published_version_id | UUID NULL | 当前发布版本 |
-| created_by | UUID FK users | |
+| created_by | UUID FK users NULL | |
 | created_at / updated_at | DATETIME(6) | UTC |
+
+当前发布版本不在本表保存指针，而是由 document_versions 中 status 为 published 的那一行确定，避免指针与版本状态两处记录不一致。
 
 ### document_versions
 
@@ -137,32 +140,37 @@ Compose 新增两个服务：
 | expected_articles | INT NULL | 该版本应有的条数（来自登记信息）；与实际切出的条数不符时，在校验页提示 |
 | parse_stats / parse_warnings | JSON NULL | 即 ParseResult 的 stats 和 warnings |
 | index_model / indexed_at | VARCHAR(128) / DATETIME(6) NULL | 向量化使用的模型、维度和时间 |
-| created_by / published_by | UUID FK users | |
+| created_by / published_by | UUID FK users NULL | |
 | created_at / updated_at / published_at | DATETIME(6) | |
+| published_document_id | 生成列 | status 为 published 时等于 document_id，否则为 NULL；由数据库计算，应用不读写 |
 
 约束：
 
 - `UNIQUE(document_id, sha256)`：同一制度不能重复上传同一个文件。
+- `UNIQUE(published_document_id)`：每个制度最多一个已发布版本，由数据库保证。发布时必须在同一事务中先归档原版本，再发布新版本。
+- `UNIQUE(id, document_id)`：供切片的复合外键引用。
 - `INDEX(status)`。
 
-### chunks
+### document_chunks
 
 | 列 | 类型 | 说明 |
 | --- | --- | --- |
 | id | BIGINT AUTO_INCREMENT PK | 同时作为向量库主键 |
-| version_id | UUID FK ON DELETE CASCADE | |
-| document_id | UUID | 冗余存储，便于过滤 |
+| version_id | UUID | 与 document_id 组成复合外键，引用版本的 (id, document_id)，ON DELETE CASCADE |
+| document_id | UUID | 冗余存储，便于过滤；复合外键保证与所属版本一致 |
 | external_id | VARCHAR(128) NULL | 外部数据集的 chunk_id |
 | ordinal | INT | `UNIQUE(version_id, ordinal)` |
 | chapter / section / article | VARCHAR(255) | |
 | heading | VARCHAR(512) | |
 | part / part_count | SMALLINT | 同一条过长时被拆分的序号和总数 |
-| content | TEXT | |
+| content | MEDIUMTEXT | 外部导入的整条条文可能超过 TEXT 的 64 KB |
 | content_sha256 | CHAR(64) | 相同内容复用向量时使用 |
 | page_start / page_end | INT NULL | 物理页序号（有转换时指转换后的 PDF） |
 | sources | JSON | text / ocr |
 
 - 字段与 `ParseResult.Chunk` 一一对应，是 release_chunks.json 字段的超集。
+- 表名为 document_chunks，与模型 `DocumentChunk` 对应，避免与解析模块的 `Chunk` 混淆。
+- 写入时用批量 INSERT（不取回自增主键）。MySQL 没有 RETURNING，逐个写入 ORM 对象会每行一次往返。
 - 主键用 BIGINT 自增的原因：
   - 切片数量远多于其他表，自增主键按插入顺序写入，效率更高。
   - 可以直接用作向量库的 INT64 主键。
@@ -174,7 +182,7 @@ Compose 新增两个服务：
 | 列 | 类型 | 说明 |
 | --- | --- | --- |
 | id | UUID PK | |
-| version_id | UUID FK | |
+| version_id | UUID FK ON DELETE CASCADE | |
 | kind | ENUM | parse / index / cleanup |
 | status | ENUM | queued / running / succeeded / failed / cancelled |
 | stage | VARCHAR(32) NULL | downloading / converting / parsing / ocr / chunking / saving / embedding / indexing |
@@ -209,7 +217,7 @@ uploaded → parsing → parsed ─批准→ indexing → ready ─发布→ pub
 **可见性与发布**
 
 - 只有 published 版本进入用户检索。uploaded 到 ready 之间的版本只有管理员可见。
-- 发布在单个事务内完成三件事：原发布版本置为 archived，新版本置为 published，更新 `documents.published_version_id`。
+- 发布在单个事务内完成两件事：原发布版本置为 archived，新版本置为 published。数据库唯一约束保证不会同时存在两个已发布版本。
 - 发布不需要重写向量，检索时按已发布版本的 ID 过滤即可。
 - 已发布版本不能修改或删除，只能下架。修订通过上传新版本完成。
 
@@ -319,7 +327,7 @@ uploaded → parsing → parsed ─批准→ indexing → ready ─发布→ pub
 1. 先确认 `processed/quality_report.json` 的 status 为 completed，只导入 `approved_for_integration=true` 的文档。
 2. 对每份文档：按 `external_id=doc_id` 查找制度，不存在就新建。
 3. 按 file_path 读取 PDF，核对 sha256 后上传到 MinIO，新建版本。版本元数据从 release_documents.json 映射。
-4. 切片直接写入 chunks：external_id 取 chunk_id，ordinal 按原顺序。parser_version 记为 `release:{schema_version}`，状态置为 parsed。
+4. 切片直接写入 document_chunks：external_id 取 chunk_id，ordinal 按原顺序。parser_version 记为 `release:{schema_version}`，状态置为 parsed。
 5. 带 `--approve` 参数时，直接为这些版本创建索引任务。
 
 - 重复运行是幂等的：同一制度下已有相同 sha256 的版本就跳过。
@@ -328,7 +336,7 @@ uploaded → parsing → parsed ─批准→ indexing → ready ─发布→ pub
 ## 11 实施顺序
 
 1. **基础设施**（2026-11-05 已完成）：Compose 增加 minio 服务；实现 ObjectStorage（首次写入时建桶）；增加 `S3_*` 配置项；为前端 Nginx 的 `admin/` 路径放宽上传限制。worker 服务移到第 3 步。
-2. **数据表**：迁移、模型和 repository。
+2. **数据表**（2026-11-05 已完成）：迁移、模型和 repository。repository 只提供基本读写；任务认领与续租放在第 3 步，管理端列表筛选放在第 4 步。
 3. **任务框架与解析任务**：认领、续租、重试；实现 parse 任务和 progress 回调；转换后的 PDF 写入 MinIO。
 4. **管理 API**：导入、任务、制度、版本、切片、原文、重试和删除。
 5. **向量化与发布**：两个 Provider 的首个实现；approve → index；publish、withdraw 和 cleanup。
