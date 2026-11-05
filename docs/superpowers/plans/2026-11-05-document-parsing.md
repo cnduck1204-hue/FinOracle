@@ -57,6 +57,11 @@ small. A missing or failing OCR yields `needs_ocr`, never `completed`.
 - [x] File-header check before conversion: LibreOffice converts unrecognised bytes
   as plain text, so `.doc` must be OLE2, RTF, ZIP or HTML/MHT/XML and `.rtf`/`.odt`
   their own formats; anything else is `DOCUMENT_INVALID` without calling a converter.
+- [x] Tesseract OCR provider (`ocr/tesseract.py`): system `tesseract` with
+  `chi_sim+eng` and `--psm 6`, TSV words merged into lines with averaged confidence.
+  Registered after RapidOCR, so `auto` prefers RapidOCR when installed; the API image
+  installs `tesseract-ocr` and `tesseract-ocr-chi-sim` (+151 MB). Tests no longer read
+  the local `backend/.env`, which had made lifespan tests fail once an admin was set.
 
 ## Decisions
 
@@ -68,9 +73,7 @@ removed as a repeated header.
 
 ## Review and verification
 
-- `uv run pytest`: 591 passed, coverage 99% (548 after the package
-  reorganization, plus service, API, CLI, settings, converter and file-header
-  tests). In a CI-equivalent environment without the `ocr` extra the real-OCR test
+- `uv run pytest`: 594 passed and 1 skipped (real Tesseract) locally, coverage 99%. In a CI-equivalent environment without the `ocr` extra the real-OCR test
   is skipped. Ruff check and format clean;
   `uv lock --check` passes.
 - 《证券公司风险处置条例》 text PDF: 64 chunks (preamble + 63 articles) in about
@@ -95,6 +98,10 @@ removed as a repeated header.
   plain text named `.doc` came back as a 200 PDF of garbage, which led to the
   file-header check; afterwards both are rejected with 422. Stopping the container
   gives 503 through the API.
+- Tesseract 5.5.0 in the API image: page segmentation 6 beat the default 3, which
+  dropped leading characters. Through the API the scanned PDF and PNG complete in
+  0.3–0.6 s with 95.8% and 96.4% character agreement (full-width brackets read as
+  〈 or ), one wrong character); RapidOCR is exact on both.
 
 Open items: the preview endpoint parses synchronously and one document at a time;
 production uploads need a background job. The API image has no OCR. Gotenberg can

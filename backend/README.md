@@ -92,7 +92,7 @@ scripts/parse_document.py ───┘
 | 参数（表单字段 / 命令行） | 默认 | 说明 |
 | --- | --- | --- |
 | `file` / 位置参数 | 必填 | 待解析文件 |
-| `ocr` / `--ocr` | `auto` | `auto` 选已安装的实现，`rapidocr` 指定，`none` 不识别图片 |
+| `ocr` / `--ocr` | `auto` | `auto` 按 RapidOCR、Tesseract 的顺序选已安装的实现，`rapidocr`、`tesseract` 指定，`none` 不识别图片 |
 | `chunker` / `--chunker` | `auto` | `auto`、`article`、`item`、`length` |
 | `max_chunk_chars` / `--max-chars` | 800 | 100–4000 |
 | `chunk_overlap` / `--overlap` | 100 | 须小于 `max_chunk_chars`，仅按长度切片时生效 |
@@ -100,7 +100,7 @@ scripts/parse_document.py ───┘
 
 接口需要管理员 Access Token，请求体为 `multipart/form-data`。上传内容写入临时文件，解析后立即删除；同一进程内一次只解析一个文档，并发请求依次处理，OCR 模型首次使用时加载并复用。用 Apifox 联调：
 
-1. 在 `.env` 设置 `ADMIN_USERNAME`、`ADMIN_EMAIL`、`ADMIN_PASSWORD` 后启动后端。Compose 环境已包含 Gotenberg，可解析 `.doc` 等格式；API 镜像未安装 OCR，扫描件返回 `needs_ocr`。需要识别扫描件时在本机运行（`uv sync --locked --extra ocr` 后启动 `uvicorn`，见“运行”，并在 `.env` 设置 `GOTENBERG_URL=http://127.0.0.1:3000`）。
+1. 在 `.env` 设置 `ADMIN_USERNAME`、`ADMIN_EMAIL`、`ADMIN_PASSWORD` 后启动后端。Compose 环境已包含 Gotenberg 与 Tesseract，可解析 `.doc` 等格式和扫描件。需要更高的 OCR 准确率时在本机运行（`uv sync --locked --extra ocr` 后启动 `uvicorn`，见“运行”，并在 `.env` 设置 `GOTENBERG_URL=http://127.0.0.1:3000`），`auto` 会优先使用 RapidOCR。
 2. 导入 `http://127.0.0.1:8001/openapi.json`（本机 `uvicorn` 为 8000 端口），文件字段会显示为文件类型。
 3. 调用 `POST /auth/login` 获取管理员 `access_token`，在解析接口的 Auth 中选择 Bearer Token。
 4. Body 选 form-data，`file` 选择文件，其他字段按需填写后发送。
@@ -119,7 +119,7 @@ uv run python scripts/parse_document.py <文件> --output result.json
 - PDF 由 pdfplumber 按页读取文本层与带框表格。文本层少于 20 字且含图片的页按扫描页整页 OCR；文本页中面积不小于 10% 且无文本层覆盖的插图单独 OCR，识别结果按位置插回正文。
 - `.docx` 按正文顺序读取标题、段落、表格和内嵌图片。`.doc`、`.rtf`、`.odt` 先转为 PDF 再按 PDF 解析，因此带有页码，但不保留 Word 标题级别，无边框表格按普通文本处理。配置 `GOTENBERG_URL` 时由 Gotenberg 转换（常驻服务，单份约 0.5 秒），否则使用本机 LibreOffice（`SOFFICE_PATH`，命令行也可用 `--soffice`）。转换前核对文件头：`.doc` 接受 Word 97–2003、RTF、ZIP 以及网站导出的 HTML/MHT/XML，`.rtf`、`.odt` 须为对应格式；LibreOffice 会把无法识别的内容当纯文本转换出乱码，这类文件直接返回 `DOCUMENT_INVALID`。
 - 转换结果与原件的差异：分页取决于转换环境的字体（Gotenberg 使用 Noto CJK），页码可能与原件打印页码相差一页；实测 Gotenberg（LibreOffice 26.8）在避头标点换行处偶有丢失标点，样本 3581 字中丢失 1 个顿号，正文文字一致。
-- OCR 默认使用 RapidOCR（PaddleOCR 模型 + ONNX Runtime），属于可选依赖 `ocr`；开发机 CPU 上约 2–3 秒/页，首次使用另需数秒加载模型。未安装或识别失败时结果状态为 `needs_ocr`，不会当作已完成。
+- OCR 有两种实现，`auto` 按顺序选择已安装的一种：RapidOCR（PaddleOCR 模型 + ONNX Runtime，可选依赖 `ocr`，开发机 CPU 约 2–3 秒/页，首次使用另需数秒加载模型）中文识别更准；Tesseract（系统安装 `tesseract-ocr` 与 `tesseract-ocr-chi-sim`，按单一文本块识别，约 0.3–0.6 秒/页）更轻量，API 镜像内置。测试样本上 RapidOCR 逐字正确，Tesseract 字符一致率约 96%，主要误差为全角括号识别成 `〈`、`)` 及个别错字。未安装或识别失败时结果状态为 `needs_ocr`，不会当作已完成。
 - 清洗只对康熙部首、兼容汉字和全角字母数字做 NFKC，保留中文全角标点；去除汉字间排版空格、页码、过半页面重复的页眉页脚及重复内容。
 - 切片默认自动选择：含两条以上“第X条”时按章 / 节 / 条，否则含两项以上“一、”时按一级序号，其余按标题和 800 字长度（100 字重叠）。行首“第七条规定的……”等引用不会被当作新条；超长条文按句拆分并以 `part` / `part_count` 标记。
 
@@ -135,7 +135,7 @@ app/rag/parsing/
 ├── cleaning.py    文本汇合与清洗
 ├── converters/    ConverterProvider：gotenberg、libreoffice（旧格式转 PDF）
 ├── parsers/       ParserProvider：pdf、word、text、image
-├── ocr/           OCRProvider：rapid_ocr
+├── ocr/           OCRProvider：rapid_ocr、tesseract
 └── chunkers/      ChunkerProvider：structured（条 / 一级序号）、length
 ```
 
@@ -168,7 +168,7 @@ uv run ruff format --check .
 uv run pytest -q
 ```
 
-单元和接口测试不要求数据库、Redis或真实凭据。解析测试在运行时生成 PDF、Word 和图片样本；真实 OCR 用例仅在安装 `ocr` 可选依赖时运行，否则跳过。pytest 默认检查整个 `app` 的行覆盖率至少 80%，CI 同样执行此门槛。当前上游 Starlette/httpx 与 AnyIO 会发出弃用提示，不影响测试结果。
+单元和接口测试不要求数据库、Redis或真实凭据。解析测试在运行时生成 PDF、Word 和图片样本；真实 OCR 用例仅在安装 `ocr` 可选依赖或 Tesseract 时运行，否则跳过。测试不读取本机 `backend/.env`，本地配置不影响结果。pytest 默认检查整个 `app` 的行覆盖率至少 80%，CI 同样执行此门槛。当前上游 Starlette/httpx 与 AnyIO 会发出弃用提示，不影响测试结果。
 
 完整真实环境检查（先启动上述 Compose 环境）：
 
