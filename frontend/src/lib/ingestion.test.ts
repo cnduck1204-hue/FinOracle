@@ -10,14 +10,16 @@ import {
   metadataForm,
   metadataPatch,
   pageLabel,
+  pipelineBuild,
   pipelineSteps,
   previewKind,
+  showsPipelines,
   validateMetadata,
   validateParseOptions,
   validateUpload,
   versionPermissions,
 } from './ingestion'
-import type { DocumentVersion, ImportJob } from './types'
+import type { DocumentVersion, ImportJob, VersionPipeline } from './types'
 
 const job = (overrides: Partial<ImportJob> = {}) =>
   ({ id: 'job', kind: 'parse', status: 'succeeded', ...overrides }) as ImportJob
@@ -96,6 +98,56 @@ describe('version state rules', () => {
     expect(previewKind(version({ file_type: 'png' }))).toBe('image')
     expect(previewKind(version({ file_type: 'tiff' }))).toBeNull()
     expect(previewKind(version({ file_type: 'docx' }))).toBeNull()
+  })
+})
+
+describe('pipeline build actions', () => {
+  const info = {
+    name: 'pdf-block-visual',
+    label: '版面视觉检索',
+    description: '',
+    ingest: 'pdf-block',
+    channels: ['dense', 'keyword', 'visual'],
+    default: false,
+    available: true,
+    unavailable_reason: null,
+  }
+  const item = (overrides = {}, pipeline = {}): VersionPipeline => ({
+    pipeline: { ...info, ...pipeline },
+    status: 'not_built',
+    supported: true,
+    unit_count: 0,
+    page_count: null,
+    index_model: null,
+    indexed_at: null,
+    ...overrides,
+  })
+  const published = version({ status: 'published' })
+
+  it('offers building, rebuilding and retrying by index state', () => {
+    expect(pipelineBuild(item(), published).label).toBe('建立索引')
+    expect(pipelineBuild(item({ status: 'ready' }), published).label).toBe('重建索引')
+    expect(pipelineBuild(item({ status: 'failed' }), published).label).toBe('重新建立')
+    expect(pipelineBuild(item({ status: 'building' }), published).label).toBeNull()
+  })
+
+  it('explains why a pipeline cannot be built', () => {
+    expect(pipelineBuild(item({}, { default: true }), published)).toEqual({
+      label: null,
+      note: '随版本入库',
+    })
+    expect(
+      pipelineBuild(item({}, { available: false, unavailable_reason: '未配置' }), published),
+    ).toEqual({ label: null, note: '未配置' })
+    expect(pipelineBuild(item({ supported: false }), published).note).toContain('不支持')
+  })
+
+  it('waits for active jobs and unfinished versions', () => {
+    const busy = version({ status: 'published', latest_job: job({ status: 'running' }) })
+    expect(pipelineBuild(item(), busy).label).toBeNull()
+    expect(pipelineBuild(item(), version({ status: 'parsed' })).label).toBeNull()
+    expect(showsPipelines({ status: 'ready' })).toBe(true)
+    expect(showsPipelines({ status: 'parsing' })).toBe(false)
   })
 })
 
@@ -271,6 +323,29 @@ describe('ingestion client', () => {
       `/api/v1/admin/documents?page=1&page_size=20&q=${encodeURIComponent('办法')}&published=false`,
     )
     expect(seen[1]).toBe('/api/v1/admin/imports?page=2&page_size=20&status=failed&kind=index')
+  })
+
+  it('selects a pipeline and builds its index', async () => {
+    const seen: string[] = []
+    const client = await signedIn((url, init) => {
+      seen.push(`${init.method ?? 'GET'} ${url.pathname}`)
+      if (url.pathname.endsWith('/search')) {
+        expect(JSON.parse(String(init.body)).pipeline).toBe('pdf-block-visual')
+        return json({ query: 'q', pipeline: 'pdf-block-visual', results: [] })
+      }
+      if (init.method === 'POST') return json({ id: 'job-2' }, 202)
+      return json([])
+    })
+    await client.listPipelines()
+    await client.search({ query: 'q', pipeline: 'pdf-block-visual' })
+    await client.listVersionPipelines('v/1')
+    await client.buildVersionPipeline('v/1', 'pdf-block-visual')
+    expect(seen).toEqual([
+      'GET /api/v1/search/pipelines',
+      'POST /api/v1/search',
+      'GET /api/v1/admin/versions/v%2F1/pipelines',
+      'POST /api/v1/admin/versions/v%2F1/pipelines/pdf-block-visual',
+    ])
   })
 
   it('rejects malformed list responses', async () => {

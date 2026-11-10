@@ -59,7 +59,7 @@ export type VersionStatus =
   'uploaded' | 'parsing' | 'parsed' | 'indexing' | 'ready' | 'published' | 'archived' | 'failed'
 export type ValidityStatus = 'unknown' | 'effective' | 'not_yet_effective' | 'amended' | 'repealed'
 export type ParseStatus = 'completed' | 'needs_ocr' | 'empty'
-export type JobKind = 'parse' | 'index' | 'cleanup'
+export type JobKind = 'parse' | 'index' | 'cleanup' | 'pipeline'
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
 export interface VersionBrief {
@@ -97,6 +97,8 @@ export interface ImportJob {
   document_title: string
   file_name: string
   kind: JobKind
+  // 附加方案任务的入库方案名
+  ingest: string | null
   status: JobStatus
   stage: string | null
   progress_current: number
@@ -179,9 +181,33 @@ export interface DocumentChunk {
   sources: string[]
 }
 
+export interface PipelineInfo {
+  name: string
+  label: string
+  description: string
+  ingest: string
+  channels: string[]
+  default: boolean
+  available: boolean
+  unavailable_reason: string | null
+}
+
+export type PipelineIndexStatus = 'not_built' | 'building' | 'ready' | 'failed'
+
+export interface VersionPipeline {
+  pipeline: PipelineInfo
+  status: PipelineIndexStatus
+  supported: boolean
+  unit_count: number
+  page_count: number | null
+  index_model: string | null
+  indexed_at: string | null
+}
+
 export interface SearchInput {
   query: string
   top_k?: number
+  pipeline?: string
   document_ids?: string[]
 }
 
@@ -192,6 +218,8 @@ export interface SearchHit {
   dense_score: number | null
   keyword_rank: number | null
   keyword_score: number | null
+  visual_rank: number | null
+  visual_score: number | null
   document: { id: string; title: string; issuer: string | null }
   version: {
     id: string
@@ -210,9 +238,12 @@ export interface SearchHit {
   content: string
   page_start: number | null
   page_end: number | null
+  bbox: number[] | null
+  modality: string | null
 }
 
 export interface SearchOutcome {
   query: string
+  pipeline: string
   results: SearchHit[]
 }

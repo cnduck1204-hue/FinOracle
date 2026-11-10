@@ -5,8 +5,10 @@ import type {
   JobStatus,
   ParseOptions,
   ParseStatus,
+  PipelineIndexStatus,
   ValidityStatus,
   VersionMetadata,
+  VersionPipeline,
   VersionStatus,
 } from './types'
 
@@ -51,6 +53,7 @@ export const JOB_KIND_LABELS: Record<JobKind, string> = {
   parse: '解析',
   index: '向量化',
   cleanup: '清理',
+  pipeline: '方案入库',
 }
 export const STAGE_LABELS: Record<string, string> = {
   downloading: '读取原件',
@@ -61,6 +64,7 @@ export const STAGE_LABELS: Record<string, string> = {
   saving: '保存结果',
   embedding: '生成向量',
   indexing: '写入索引',
+  visual: '页面视觉编码',
 }
 // “未知”不能被读作现行有效，因此单独写明待核验。
 export const VALIDITY_LABELS: Record<ValidityStatus, string> = {
@@ -147,6 +151,39 @@ export function versionPermissions(version: DocumentVersion): VersionPermissions
     remove: idle && ['uploaded', 'parsed', 'failed', 'ready'].includes(status),
     retry: status === 'failed' && job?.status === 'failed',
   }
+}
+
+export const PIPELINE_STATUS_LABELS: Record<PipelineIndexStatus, string> = {
+  not_built: '未建立',
+  building: '构建中',
+  ready: '索引就绪',
+  failed: '构建失败',
+}
+
+export function pipelineStatusTone(status: PipelineIndexStatus): Tone {
+  if (status === 'failed') return 'bad'
+  if (status === 'ready') return 'good'
+  return status === 'building' ? 'active' : 'neutral'
+}
+
+/** 附加方案要在默认方案向量化完成后才能建立，此前不展示。 */
+export function showsPipelines(version: Pick<DocumentVersion, 'status'>): boolean {
+  return version.status === 'ready' || version.status === 'published'
+}
+
+export function pipelineBuild(
+  item: VersionPipeline,
+  version: Pick<DocumentVersion, 'status' | 'latest_job'>,
+): { label: string | null; note: string | null } {
+  const { pipeline, status, supported } = item
+  if (pipeline.default) return { label: null, note: '随版本入库' }
+  if (!pipeline.available) return { label: null, note: pipeline.unavailable_reason }
+  if (!supported) return { label: null, note: '此文件格式不支持该方案' }
+  const job = version.latest_job
+  if (status === 'building' || !showsPipelines(version) || (job && isJobActive(job.status)))
+    return { label: null, note: null }
+  const labels = { not_built: '建立索引', failed: '重新建立', ready: '重建索引' }
+  return { label: labels[status], note: null }
 }
 
 export function versionName(version: { version_note: string | null; created_at: string }): string {

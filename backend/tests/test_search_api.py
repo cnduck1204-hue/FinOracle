@@ -306,7 +306,9 @@ def test_chunks_withdrawn_during_retrieval_are_dropped(search):
     kept = search.ids.payment_chunks[0]
 
     class Stale:
-        async def retrieve(self, query, *, version_ids, limit):
+        requires = HybridRetriever.requires
+
+        async def retrieve(self, query, *, version_ids, limit, page_units=None):
             return [RetrievedChunk(90, 0.5, 1, 0.9), RetrievedChunk(kept, 0.4, 2, 0.8)]
 
     search.state.retriever = Stale()

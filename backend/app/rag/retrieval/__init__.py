@@ -25,6 +25,8 @@ class RetrievedChunk:
     dense_score: float | None = None
     keyword_rank: int | None = None
     keyword_score: float | None = None
+    visual_rank: int | None = None
+    visual_score: float | None = None
 
 
 def reciprocal_rank_fusion(
@@ -33,10 +35,11 @@ def reciprocal_rank_fusion(
     *,
     limit: int,
     k: int = RRF_K,
+    visual: Sequence[SearchHit] = (),
 ) -> list[RetrievedChunk]:
-    """按 RRF 合并两路结果；同分时名次更靠前者优先，再按切片 ID 稳定排序。"""
+    """按 RRF 合并各路结果；同分时名次更靠前者优先，再按切片 ID 稳定排序。"""
     entries: dict[int, dict] = {}
-    for path, hits in (("dense", dense), ("keyword", keywords)):
+    for path, hits in (("dense", dense), ("keyword", keywords), ("visual", visual)):
         for rank, hit in enumerate(hits, start=1):
             entry = entries.setdefault(hit.chunk_id, {"score": 0.0})
             if f"{path}_rank" in entry:
@@ -50,7 +53,11 @@ def reciprocal_rank_fusion(
     ]
 
     def best_rank(item: RetrievedChunk) -> int:
-        ranks = [r for r in (item.dense_rank, item.keyword_rank) if r is not None]
+        ranks = [
+            rank
+            for rank in (item.dense_rank, item.keyword_rank, item.visual_rank)
+            if rank is not None
+        ]
         return min(ranks)
 
     fused.sort(key=lambda item: (-item.score, best_rank(item), item.chunk_id))
@@ -58,6 +65,10 @@ def reciprocal_rank_fusion(
 
 
 class HybridRetriever:
+    """检索部分的基础实现：稠密向量与 BM25 关键词两路融合。"""
+
+    requires = frozenset({"dense", "keyword"})
+
     def __init__(
         self,
         embedding: EmbeddingProvider,
@@ -72,10 +83,21 @@ class HybridRetriever:
         self.rrf_k = rrf_k
 
     async def retrieve(
-        self, query: str, *, version_ids: Sequence[UUID], limit: int
+        self,
+        query: str,
+        *,
+        version_ids: Sequence[UUID],
+        limit: int,
+        page_units: object = None,
     ) -> list[RetrievedChunk]:
         if not version_ids:
             return []
+        dense, keywords = await self._text_channels(query, version_ids)
+        return reciprocal_rank_fusion(dense, keywords, limit=limit, k=self.rrf_k)
+
+    async def _text_channels(
+        self, query: str, version_ids: Sequence[UUID]
+    ) -> tuple[list[SearchHit], list[SearchHit]]:
         # 关键词检索不依赖查询向量，与向量化同时进行，缩短首次响应时间
         keyword_task = asyncio.create_task(
             asyncio.to_thread(
@@ -98,7 +120,7 @@ class HybridRetriever:
             if not keyword_task.done():
                 keyword_task.cancel()
                 await asyncio.gather(keyword_task, return_exceptions=True)
-        return reciprocal_rank_fusion(dense, keywords, limit=limit, k=self.rrf_k)
+        return dense, keywords
 
 
 __all__ = [

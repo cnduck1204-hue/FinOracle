@@ -47,10 +47,16 @@ ValidityStatus = Literal[
     "unknown", "effective", "not_yet_effective", "amended", "repealed"
 ]
 ParseStatus = Literal["completed", "needs_ocr", "empty"]
+# 附加方案的索引状态；默认方案的状态就是版本状态
+IndexStatus = Literal["building", "ready", "failed"]
 
 VERSION_STATUSES: tuple[VersionStatus, ...] = get_args(VersionStatus)
 VALIDITY_STATUSES: tuple[ValidityStatus, ...] = get_args(ValidityStatus)
 PARSE_STATUSES: tuple[ParseStatus, ...] = get_args(ParseStatus)
+INDEX_STATUSES: tuple[IndexStatus, ...] = get_args(IndexStatus)
+
+# 默认入库方案的名字；切片与索引按入库方案隔离
+DEFAULT_INGEST = "structured"
 
 # 大整数主键：SQLite（仓库单元测试）仅 INTEGER PRIMARY KEY 自增
 _BIGINT_ID = BigInteger().with_variant(Integer(), "sqlite")
@@ -184,7 +190,9 @@ class DocumentChunk(Base):
     __tablename__ = "document_chunks"
 
     __table_args__ = (
-        UniqueConstraint("version_id", "ordinal", name="uq_document_chunks_ordinal"),
+        UniqueConstraint(
+            "version_id", "ingest", "ordinal", name="uq_document_chunks_ordinal"
+        ),
         ForeignKeyConstraint(
             ["version_id", "document_id"],
             ["document_versions.id", "document_versions.document_id"],
@@ -198,6 +206,10 @@ class DocumentChunk(Base):
     version_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True))
     # 冗余保存，便于按制度过滤；由复合外键保证与版本一致
     document_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True))
+    # 产生该切片的入库方案
+    ingest: Mapped[str] = mapped_column(
+        String(32), default=DEFAULT_INGEST, server_default=DEFAULT_INGEST
+    )
     # 外部数据集中的 chunk_id
     external_id: Mapped[str | None] = mapped_column(String(128))
     ordinal: Mapped[int] = mapped_column(Integer)
@@ -214,3 +226,40 @@ class DocumentChunk(Base):
     page_end: Mapped[int | None] = mapped_column(Integer)
     # 内容来源：text / ocr
     sources: Mapped[list[str]] = mapped_column(JSON)
+    # 页面上的位置 [x0, y0, x1, y1]（PDF 点，原点在左上角）；解析器不提供时为空
+    bbox: Mapped[list[float] | None] = mapped_column(JSON)
+    # text / table；解析器不提供时为空
+    modality: Mapped[str | None] = mapped_column(String(16))
+
+
+class VersionIndex(Base):
+    """版本在附加入库方案下的索引状态。默认方案的状态就是版本状态，不在此表。"""
+
+    __tablename__ = "version_indexes"
+
+    version_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "document_versions.id",
+            name="fk_version_indexes_version_id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
+    ingest: Mapped[str] = mapped_column(String(32), primary_key=True)
+    status: Mapped[str] = mapped_column(
+        Enum(*INDEX_STATUSES, name="version_index_status", validate_strings=True),
+        default="building",
+        server_default="building",
+    )
+    unit_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    page_count: Mapped[int | None] = mapped_column(Integer)
+    parser_version: Mapped[str | None] = mapped_column(String(32))
+    stats: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    # 各索引器的模型标识，以 + 连接；不同时须重建
+    index_model: Mapped[str | None] = mapped_column(String(255))
+    indexed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), default=utc_now, onupdate=utc_now
+    )

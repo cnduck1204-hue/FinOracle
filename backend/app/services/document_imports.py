@@ -24,7 +24,12 @@ from app.rag.indexing import VectorStore
 from app.rag.parsing import SUPPORTED_TYPES, ParseOptions
 from app.rag.parsing.errors import file_too_large, invalid_document, unsupported_type
 from app.rag.parsing.options import MIB
-from app.repositories.documents import DocumentRepository, DocumentVersionRepository
+from app.rag.pipelines import PipelineRegistry
+from app.repositories.documents import (
+    DocumentRepository,
+    DocumentVersionRepository,
+    VersionIndexRepository,
+)
 from app.repositories.import_jobs import ImportJobRepository
 from app.schemas.document import ParseOptionsInput
 from app.schemas.ingestion import ImportForm, JobResponse
@@ -154,7 +159,15 @@ async def retry_job(job_id: UUID, session: AsyncSession) -> JobResponse:
         )
         if await jobs.get_active_for_version(job.version_id) is not None:
             raise import_in_progress()
-        if version.status != "failed":
+        if job.kind == "pipeline":
+            # 附加方案的失败不改变版本状态，只看该方案自己的索引状态
+            index = await VersionIndexRepository(session).get(
+                job.version_id, job.ingest or "", for_update=True
+            )
+            if index is None or index.status != "failed":
+                raise version_state_conflict("该方案的索引已不在失败状态")
+            index.status = "building"
+        elif version.status != "failed":
             raise version_state_conflict("版本已不在失败状态，请使用重新解析")
         job.status = "queued"
         job.attempts = 0
@@ -166,7 +179,8 @@ async def retry_job(job_id: UUID, session: AsyncSession) -> JobResponse:
         job.error_message = None
         job.started_at = None
         job.finished_at = None
-        version.status = "uploaded" if job.kind == "parse" else "indexing"
+        if job.kind != "pipeline":
+            version.status = "uploaded" if job.kind == "parse" else "indexing"
         await session.flush()
         return job_response(await jobs.get_with_context(job_id))
 
@@ -219,6 +233,7 @@ async def delete_version(
     session: AsyncSession,
     storage: ObjectStorage,
     store: VectorStore,
+    pipelines: PipelineRegistry | None = None,
 ) -> None:
     """删除未发布的版本及其切片、任务、对象与向量；已发布或已归档的版本供历史引用回溯，不能删除。"""
     async with session.begin():
@@ -230,6 +245,9 @@ async def delete_version(
             version.pdf_object_key,
             blocks_key(version.document_id, version.id),
         ]
+        # 外键级联会删除索引记录，先取出需要清理的附加方案
+        extra = await VersionIndexRepository(session).list_for_version(version_id)
+        extra_ingests = [index.ingest for index in extra]
         # 切片与任务由外键级联删除
         await session.delete(version)
     # 数据库已提交后再删对象与向量；失败只留下孤儿数据，检索只读已发布版本，不受影响
@@ -237,6 +255,9 @@ async def delete_version(
         if key is not None:
             await run_in_threadpool(_delete_quietly, storage, key)
     await run_in_threadpool(delete_vectors_quietly, store, version_id)
+    if pipelines is not None:
+        for name in extra_ingests:
+            await run_in_threadpool(pipelines.ingest(name).delete_quietly, version_id)
 
 
 def delete_vectors_quietly(store: VectorStore, version_id: UUID) -> None:

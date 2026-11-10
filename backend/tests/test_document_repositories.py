@@ -175,6 +175,9 @@ def test_chunk_row_maps_every_parsed_field(db):
     assert row == {
         "version_id": version.id,
         "document_id": version.document_id,
+        "ingest": "structured",
+        "bbox": None,
+        "modality": None,
         "external_id": "doc_007",
         "ordinal": 3,
         "chapter": "第二章",

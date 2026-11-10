@@ -9,9 +9,16 @@ from app.api.dependencies import require_admin
 from app.db.session import get_db
 from app.models.user import User
 from app.rag.indexing import VectorStore, get_vector_store
+from app.rag.pipelines import PipelineRegistry, get_pipeline_registry
 from app.schemas.document import ParseOptionsInput
 from app.schemas.ingestion import ChunkPage, JobResponse, VersionResponse, VersionUpdate
-from app.services import document_imports, document_library, document_publishing
+from app.schemas.pipeline import VersionPipelineResponse
+from app.services import (
+    document_imports,
+    document_library,
+    document_publishing,
+    pipelines,
+)
 from app.storage import ObjectStorage, get_storage
 
 router = APIRouter(dependencies=[Depends(require_admin)])
@@ -162,6 +169,40 @@ async def withdraw_version(
     return await document_publishing.withdraw_version(version_id, session, store)
 
 
+@router.get(
+    "/{version_id}/pipelines",
+    response_model=list[VersionPipelineResponse],
+    summary="版本在各检索方案下的索引状态",
+)
+async def list_version_pipelines(
+    version_id: UUID,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    registry: Annotated[PipelineRegistry, Depends(get_pipeline_registry)],
+) -> list[VersionPipelineResponse]:
+    response.headers["Cache-Control"] = "no-store"
+    return await pipelines.list_for_version(version_id, session, registry)
+
+
+@router.post(
+    "/{version_id}/pipelines/{name}",
+    response_model=JobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="为版本建立指定方案的索引",
+    description="默认方案随版本入库；其他方案在版本向量化完成后按需建立，可重复调用以重建。",
+)
+async def build_version_pipeline(
+    version_id: UUID,
+    name: str,
+    response: Response,
+    user: Annotated[User, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    registry: Annotated[PipelineRegistry, Depends(get_pipeline_registry)],
+) -> JobResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await pipelines.build_index(version_id, name, user, session, registry)
+
+
 @router.delete(
     "/{version_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -172,6 +213,7 @@ async def delete_version(
     session: Annotated[AsyncSession, Depends(get_db)],
     storage: Annotated[ObjectStorage, Depends(get_storage)],
     store: Annotated[VectorStore, Depends(get_vector_store)],
+    registry: Annotated[PipelineRegistry, Depends(get_pipeline_registry)],
 ) -> Response:
-    await document_imports.delete_version(version_id, session, storage, store)
+    await document_imports.delete_version(version_id, session, storage, store, registry)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
