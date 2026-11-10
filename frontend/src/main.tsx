@@ -5,6 +5,7 @@ import { App } from './App'
 import { AuthProvider } from './auth/AuthProvider'
 import { Brand } from './components/Brand'
 import './styles.css'
+import './ingestion.css'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }

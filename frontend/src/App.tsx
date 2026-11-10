@@ -4,9 +4,15 @@ import { useAuth } from './auth/AuthProvider'
 import { AppLayout } from './components/AppLayout'
 import { Brand } from './components/Brand'
 import { AccountPage } from './pages/AccountPage'
+import { AdminDocumentsPage } from './pages/AdminDocumentsPage'
+import { AdminDocumentVersionsPage } from './pages/AdminDocumentVersionsPage'
+import { AdminImportDetailPage } from './pages/AdminImportDetailPage'
+import { AdminImportNewPage } from './pages/AdminImportNewPage'
+import { AdminImportsPage } from './pages/AdminImportsPage'
 import { AdminUsersPage } from './pages/AdminUsersPage'
 import { AuthPage } from './pages/AuthPage'
 import { ComingSoonPage } from './pages/ComingSoonPage'
+import { SearchPage } from './pages/SearchPage'
 import { WorkspacePage } from './pages/WorkspacePage'
 
 function RequireSession() {
@@ -27,7 +33,7 @@ function RequireAdmin() {
     <section className="empty-page">
       <ShieldCheck size={30} strokeWidth={1.4} aria-hidden="true" />
       <h1>没有访问权限</h1>
-      <p>用户管理仅向管理员开放。</p>
+      <p>此页面仅向管理员开放。</p>
       <Link to="/chat" className="cut-button button-dark">
         返回工作台
       </Link>
@@ -72,9 +78,17 @@ export function App() {
           <Route path="/account" element={<AccountPage />} />
           <Route element={<RequireAdmin />}>
             <Route path="/admin/users" element={<AdminUsersPage />} />
+            <Route path="/admin/documents" element={<AdminDocumentsPage />} />
+            <Route
+              path="/admin/documents/:documentId/versions"
+              element={<AdminDocumentVersionsPage />}
+            />
+            <Route path="/admin/imports" element={<AdminImportsPage />} />
+            <Route path="/admin/imports/new" element={<AdminImportNewPage />} />
+            <Route path="/admin/imports/:jobId" element={<AdminImportDetailPage />} />
           </Route>
           <Route path="/library" element={<ComingSoonPage module="library" />} />
-          <Route path="/search" element={<ComingSoonPage module="search" />} />
+          <Route path="/search" element={<SearchPage />} />
           <Route path="/history" element={<ComingSoonPage module="history" />} />
           <Route path="/favorites" element={<ComingSoonPage module="favorites" />} />
         </Route>

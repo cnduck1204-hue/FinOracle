@@ -87,6 +87,30 @@ def test_parsed_version_is_indexed_automatically(tmp_path):
     run_with_database(tmp_path, scenario)
 
 
+def test_index_job_carries_the_document_title_into_clauses(tmp_path):
+    content = (
+        "关于开展消费者权益保护自查的办法\n\n"
+        "第一条 各机构应当完成自查。\n\n第二条 发现问题应当整改。\n"
+    ).encode()
+
+    async def scenario(env):
+        ids = await seed(env, content=content)
+        worker = make_worker(env)
+        await drain(worker)
+
+        version = await load(env, DocumentVersion, ids.version_id)
+        # 切片仍完整保留供校验，只是标题切片不进入索引
+        assert (version.status, version.chunk_count) == ("ready", 3)
+        jobs = await jobs_of(env, ids.version_id)
+        assert (jobs[1].progress_current, jobs[1].progress_total) == (2, 2)
+        records = env.vectors.by_version(ids.version_id)
+        assert len(records) == 2
+        assert all("消费者权益保护自查" in record.text for record in records)
+        assert all("第" in record.text.split("\n")[1] for record in records)
+
+    run_with_database(tmp_path, scenario)
+
+
 def test_auto_approval_can_be_turned_off(tmp_path):
     async def scenario(env):
         ids = await seed(env, content=REGULATION)
