@@ -109,6 +109,7 @@ def test_lease_renewal_and_result_writes_require_ownership(tmp_path):
         async with env.sessions() as session, session.begin():
             jobs = ImportJobRepository(session)
             renew = {
+                "attempt": 1,
                 "now": later,
                 "lease_seconds": 60,
                 "stage": "ocr",
@@ -116,6 +117,9 @@ def test_lease_renewal_and_result_writes_require_ownership(tmp_path):
                 "progress_total": 9,
             }
             assert not await jobs.renew_lease(ids.job_id, worker_id="other", **renew)
+            assert not await jobs.renew_lease(
+                ids.job_id, worker_id="worker-1", **(renew | {"attempt": 0})
+            )
             assert await jobs.renew_lease(ids.job_id, worker_id="worker-1", **renew)
             assert await jobs.get_owned(ids.job_id, "other") is None
             assert (await jobs.get_owned(ids.job_id, "worker-1")).id == ids.job_id
@@ -325,6 +329,62 @@ def test_heartbeat_renews_the_lease_and_publishes_progress(tmp_path):
         )
         assert running.lease_expires_at == T0 + timedelta(seconds=70)
         assert (await load(env, ImportJob, ids.job_id)).status == "succeeded"
+
+    run_with_database(tmp_path, scenario)
+
+
+def test_heartbeat_stops_the_handler_after_lease_takeover(tmp_path):
+    async def scenario(env):
+        ids = await seed(env)
+        entered = asyncio.Event()
+        stopped = asyncio.Event()
+
+        async def slow(context):
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped.set()
+
+        handler = FakeHandler(slow)
+        execution = asyncio.create_task(make_worker(env, handler).run_once())
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=2)
+            async with env.sessions() as session, session.begin():
+                job = await session.get(ImportJob, ids.job_id)
+                job.locked_by = "worker-2"
+                job.attempts += 1
+            assert await asyncio.wait_for(execution, timeout=2)
+        finally:
+            execution.cancel()
+            await asyncio.gather(execution, return_exceptions=True)
+        assert stopped.is_set() and handler.failures == 0
+        job = await load(env, ImportJob, ids.job_id)
+        assert (job.status, job.locked_by, job.attempts) == ("running", "worker-2", 2)
+
+    run_with_database(tmp_path, scenario)
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_an_old_attempt_cannot_write_or_fail_a_reclaimed_job(tmp_path, fail):
+    async def scenario(env):
+        ids = await seed(env)
+        writes = []
+
+        async def reclaimed(context):
+            async with env.sessions() as session, session.begin():
+                job = await session.get(ImportJob, ids.job_id)
+                # 同一个 worker 标识再次认领后，旧执行轮次也必须失效。
+                job.attempts += 1
+            if fail:
+                raise ValueError("old attempt failed")
+            await context.run_owned(writes.append, True)
+
+        handler = FakeHandler(reclaimed)
+        await make_worker(env, handler).run_once()
+        job = await load(env, ImportJob, ids.job_id)
+        assert (job.status, job.locked_by, job.attempts) == ("running", "worker-1", 2)
+        assert writes == [] and handler.failures == 0
 
     run_with_database(tmp_path, scenario)
 

@@ -43,7 +43,7 @@ class IndexHandler:
         total = len(items)
         context.report("indexing", 0, total)
         await asyncio.to_thread(self.store.ensure_collection)
-        await asyncio.to_thread(self.store.delete_by_version, version_id)
+        await context.run_owned(self.store.delete_by_version, version_id)
         size = self.embedding.max_batch_size
         for start in range(0, total, size):
             batch = items[start : start + size]
@@ -54,7 +54,7 @@ class IndexHandler:
                 VectorRecord(item.chunk_id, document_id, version_id, item.text, vector)
                 for item, vector in zip(batch, vectors, strict=True)
             ]
-            await asyncio.to_thread(self.store.upsert, records)
+            await context.run_owned(self.store.upsert, records)
             context.report("embedding", start + len(batch), total)
         await self._save(context)
 

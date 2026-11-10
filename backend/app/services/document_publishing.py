@@ -7,8 +7,8 @@
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.concurrency import run_in_threadpool
 
+from app.core.concurrency import run_sync_to_completion
 from app.db.base import utc_now
 from app.models.user import User
 from app.rag.indexing import VectorStore
@@ -44,7 +44,7 @@ async def publish_version(
         latest = await ImportJobRepository(session).latest_for_version(version_id)
         response = version_response(version, latest)
     if replaced is not None:
-        await run_in_threadpool(delete_vectors_quietly, store, replaced)
+        await _delete_archived_vectors(replaced, session, store)
     return response
 
 
@@ -60,5 +60,17 @@ async def withdraw_version(
         await session.flush()
         latest = await ImportJobRepository(session).latest_for_version(version_id)
         response = version_response(version, latest)
-    await run_in_threadpool(delete_vectors_quietly, store, version_id)
+    await _delete_archived_vectors(version_id, session, store)
     return response
+
+
+async def _delete_archived_vectors(
+    version_id: UUID, session: AsyncSession, store: VectorStore
+) -> None:
+    # 提交归档后可能已有人重新批准。重新锁定并检查状态，删除期间阻止批准创建索引任务。
+    async with session.begin():
+        version = await DocumentVersionRepository(session).get(
+            version_id, for_update=True
+        )
+        if version is not None and version.status == "archived":
+            await run_sync_to_completion(delete_vectors_quietly, store, version_id)

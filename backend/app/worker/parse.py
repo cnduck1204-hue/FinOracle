@@ -100,7 +100,7 @@ class ParseHandler:
                     workdir,
                 )
                 pdf_key = converted_pdf_key(source.document_id, version_id)
-                await asyncio.to_thread(
+                await context.run_owned(
                     context.storage.put_file,
                     pdf_key,
                     document,
@@ -119,7 +119,7 @@ class ParseHandler:
             context.report("saving")
             blocks = workdir / "blocks.json"
             blocks.write_bytes(_BLOCKS.dump_json(result.blocks or []))
-            await asyncio.to_thread(
+            await context.run_owned(
                 context.storage.put_file,
                 blocks_key(source.document_id, version_id),
                 blocks,

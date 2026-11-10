@@ -1,5 +1,7 @@
 import asyncio
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -12,6 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
 from app.api.dependencies import require_current_user
+from app.api.v1.endpoints.search import get_retriever
 from app.core.config import ParsingSettings
 from app.db.base import Base
 from app.db.engine import create_session_factory
@@ -19,8 +22,9 @@ from app.db.session import get_db
 from app.main import app
 from app.models import Document, DocumentChunk, DocumentVersion, ImportJob, User
 from app.rag.indexing import get_vector_store
+from app.rag.retrieval import HybridRetriever
 from app.repositories.documents import DocumentVersionRepository
-from app.services import document_imports
+from app.services import document_imports, document_publishing
 from app.services.document_imports import clean_file_name
 from app.services.document_library import content_disposition, media_type_for
 from app.storage import get_storage
@@ -811,6 +815,60 @@ def test_withdrawn_versions_can_be_approved_and_published_again(api):
     api.run_worker()
     assert len(api.vectors.by_version(UUID(job["version_id"]))) == 3
     assert api.client.post(f"{url}/publish").json()["status"] == "published"
+
+
+@pytest.mark.parametrize("action", ["withdraw", "replace"])
+def test_delayed_archive_cleanup_preserves_republished_vectors(
+    api, monkeypatch, action
+):
+    first = ready_version(api)
+    version_id = UUID(first["version_id"])
+    url = f"{API}/versions/{version_id}"
+    assert api.client.post(f"{url}/publish").status_code == 200
+    if action == "replace":
+        second = ready_version(
+            api,
+            document_id=first["document_id"],
+            title=None,
+            content=REGULATION + b"\n",
+        )
+        action_url = f"{API}/versions/{second['version_id']}/publish"
+    else:
+        action_url = f"{url}/withdraw"
+
+    entered = threading.Event()
+    release = threading.Event()
+    cleanup = document_publishing._delete_archived_vectors
+
+    async def delayed_cleanup(identifier, session, store):
+        if identifier == version_id and not entered.is_set():
+            entered.set()
+            assert await asyncio.to_thread(release.wait, 5)
+        await cleanup(identifier, session, store)
+
+    monkeypatch.setattr(
+        document_publishing, "_delete_archived_vectors", delayed_cleanup
+    )
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(api.client.post, action_url)
+        try:
+            assert entered.wait(5)
+            assert api.client.post(f"{url}/approve").status_code == 202
+            api.run_worker()
+            assert api.client.post(f"{url}/publish").status_code == 200
+        finally:
+            release.set()
+        assert pending.result(timeout=5).status_code == 200
+    assert api.client.get(url).json()["status"] == "published"
+    assert len(api.vectors.by_version(version_id)) == 3
+    api.client.app.dependency_overrides[get_retriever] = lambda: HybridRetriever(
+        api.embedding, api.vectors
+    )
+    result = api.client.post(
+        "/api/v1/search",
+        json={"query": "金融机构", "document_ids": [first["document_id"]]},
+    )
+    assert result.status_code == 200 and len(result.json()["results"]) == 3
 
 
 def test_ready_versions_can_be_reparsed_or_deleted_with_their_vectors(api):

@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.concurrency import run_sync_to_completion
 from app.core.exceptions import AppException
 from app.db.base import utc_now
 from app.models.import_job import ImportJob
@@ -88,9 +89,17 @@ class JobContext:
     async def lock_job(self, session: AsyncSession) -> ImportJob:
         """在调用方事务中锁定任务；已不归本 worker 所有时抛出 LeaseLost，调用方事务随之回滚。"""
         job = await ImportJobRepository(session).get_owned(self.job.id, self.worker_id)
-        if job is None:
+        if job is None or job.attempts != self.job.attempt:
             raise LeaseLost(str(self.job.id))
         return job
+
+    async def run_owned(
+        self, operation: Callable[..., None], /, *args: object, **kwargs: object
+    ) -> None:
+        """检查本轮任务归属，持有任务行锁直到同步写入完成，阻止执行中被接管。"""
+        async with self.sessions() as session, session.begin():
+            await self.lock_job(session)
+            await run_sync_to_completion(operation, *args, **kwargs)
 
     def succeed(self, job: ImportJob) -> None:
         """与处理结果在同一事务中标记成功。"""
@@ -218,9 +227,16 @@ class Worker:
             )
             return
 
+        execution = asyncio.create_task(handler.run(context))
         heartbeat = asyncio.create_task(self._heartbeat(context))
         try:
-            await handler.run(context)
+            done, _ = await asyncio.wait(
+                (execution, heartbeat), return_when=asyncio.FIRST_COMPLETED
+            )
+            if execution in done:
+                await execution
+            else:
+                await heartbeat
         except LeaseLost:
             logger.warning("job_lease_lost: %s", job.id)
             return
@@ -234,8 +250,9 @@ class Worker:
             await self._fail(context, handler, code, message, retryable)
             return
         finally:
+            execution.cancel()
             heartbeat.cancel()
-            await asyncio.gather(heartbeat, return_exceptions=True)
+            await asyncio.gather(execution, heartbeat, return_exceptions=True)
         logger.info("job_succeeded: %s %s", job.kind, job.id)
 
     async def _heartbeat(self, context: JobContext) -> None:
@@ -247,6 +264,7 @@ class Worker:
                     owned = await ImportJobRepository(session).renew_lease(
                         context.job.id,
                         worker_id=self.worker_id,
+                        attempt=context.job.attempt,
                         now=self.clock(),
                         lease_seconds=self.lease_seconds,
                         stage=stage,
@@ -258,8 +276,7 @@ class Worker:
                 logger.warning("job_heartbeat_failed: %s", context.job.id)
                 continue
             if not owned:
-                logger.warning("job_lease_lost: %s", context.job.id)
-                return
+                raise LeaseLost(str(context.job.id))
 
     async def _fail(
         self,
@@ -274,7 +291,7 @@ class Worker:
                 job = await ImportJobRepository(session).get_owned(
                     context.job.id, self.worker_id
                 )
-                if job is None:
+                if job is None or job.attempts != context.job.attempt:
                     return
                 now = self.clock()
                 job.error_code = code

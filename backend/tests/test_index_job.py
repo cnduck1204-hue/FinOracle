@@ -1,9 +1,15 @@
+import asyncio
+import threading
+from types import SimpleNamespace
+
+import pytest
 from sqlalchemy import select
 
 from app.core.config import ParsingSettings
 from app.models import DocumentVersion, ImportJob
 from app.rag.indexing import VectorRecord
 from app.rag.indexing.errors import embedding_unavailable
+from app.services.document_publishing import publish_version
 from app.worker.index import IndexHandler
 from app.worker.parse import ParseHandler
 from app.worker.runtime import Worker
@@ -186,5 +192,69 @@ def test_index_job_for_a_missing_version_stops_cleanly(tmp_path):
         # 任务随版本级联删除，worker 没有可执行的任务
         assert await make_worker(env).run_once() is False
         assert await load(env, ImportJob, ids.job_id) is None
+
+    run_with_database(tmp_path, scenario)
+
+
+@pytest.mark.parametrize("pause_at", ["before_delete", "before_upsert"])
+def test_old_index_attempt_cannot_change_vectors_after_takeover(tmp_path, pause_at):
+    async def scenario(env):
+        ids = await seed(env, content=REGULATION)
+        old_embedding = FakeEmbedding()
+        worker = make_worker(env, embedding=old_embedding)
+        # 在下一次心跳前接管，验证每次向量写入自身的归属检查。
+        worker.heartbeat_seconds = 5
+        assert await worker.run_once()
+        store = env.vectors
+        entered = threading.Event()
+        release = threading.Event()
+
+        def pause():
+            entered.set()
+            assert release.wait(5)
+
+        if pause_at == "before_delete":
+            ensure = store.ensure_collection
+
+            def paused_ensure():
+                ensure()
+                if store.ensured == 1:
+                    pause()
+
+            store.ensure_collection = paused_ensure
+            old_embedding.fail_with = embedding_unavailable()
+        else:
+            embed = old_embedding.embed_documents
+
+            async def paused_embed(texts):
+                vectors = await embed(texts)
+                await asyncio.to_thread(pause)
+                return [[-value for value in vector] for vector in vectors]
+
+            old_embedding.embed_documents = paused_embed
+
+        pending = asyncio.create_task(worker.run_once())
+        try:
+            assert await asyncio.to_thread(entered.wait, 5)
+            env.clock.advance(61)
+            replacement = Worker(
+                env.sessions,
+                env.storage,
+                [IndexHandler(FakeEmbedding(), store)],
+                worker_id="worker-2",
+                clock=env.clock,
+            )
+            assert await replacement.run_once()
+            async with env.sessions() as session:
+                await publish_version(
+                    ids.version_id, SimpleNamespace(id=None), session, store
+                )
+            published_vectors = dict(store.records)
+        finally:
+            release.set()
+            await pending
+        version = await load(env, DocumentVersion, ids.version_id)
+        assert version.status == "published"
+        assert len(published_vectors) == 3 and store.records == published_vectors
 
     run_with_database(tmp_path, scenario)
