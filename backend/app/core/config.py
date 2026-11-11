@@ -229,6 +229,27 @@ class VectorStoreSettings(BaseSettings):
     model_config = _ENV_SOURCE
 
 
+class VisualSettings(BaseSettings):
+    """页面视觉通道。模型运行在独立的编码服务中，未配置地址时该方案不可用。"""
+
+    visual_service_url: str | None = None
+    visual_model: str = "vidore/colSmol-500M"
+    # ColPali 系列模型的后期交互向量维度
+    visual_dimension: int = Field(default=128, ge=1)
+    visual_batch_pages: int = Field(default=4, ge=1)
+    visual_render_dpi: int = Field(default=150, ge=36, le=600)
+    # CPU 上单页约十几秒，一批要留足时间
+    visual_timeout_seconds: float = Field(default=300, gt=0)
+
+    @field_validator("visual_service_url")
+    @classmethod
+    def normalize_url(cls, value: str | None) -> str | None:
+        value = (value or "").strip().rstrip("/")
+        return value or None
+
+    model_config = _ENV_SOURCE
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
@@ -252,3 +273,8 @@ def get_embedding_settings() -> EmbeddingSettings:
 @lru_cache
 def get_vector_store_settings() -> VectorStoreSettings:
     return VectorStoreSettings()
+
+
+@lru_cache
+def get_visual_settings() -> VisualSettings:
+    return VisualSettings()

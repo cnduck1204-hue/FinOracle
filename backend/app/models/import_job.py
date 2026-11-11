@@ -10,7 +10,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, utc_now
 
-JobKind = Literal["parse", "index", "cleanup"]
+# pipeline：附加方案的入库任务，ingest 列指明方案
+JobKind = Literal["parse", "index", "cleanup", "pipeline"]
 JobStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 # 仍在排队或执行中的任务；同一版本此时不再接受新任务
 ACTIVE_JOB_STATUSES: tuple[JobStatus, ...] = ("queued", "running")
@@ -44,12 +45,13 @@ class ImportJob(Base):
     kind: Mapped[str] = mapped_column(
         Enum(*JOB_KINDS, name="import_job_kind", validate_strings=True)
     )
+    ingest: Mapped[str | None] = mapped_column(String(32))
     status: Mapped[str] = mapped_column(
         Enum(*JOB_STATUSES, name="import_job_status", validate_strings=True),
         default="queued",
         server_default="queued",
     )
-    # downloading / converting / parsing / ocr / chunking / saving / embedding / indexing
+    # downloading / converting / parsing / ocr / chunking / saving / embedding / indexing / visual
     stage: Mapped[str | None] = mapped_column(String(32))
     progress_current: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0"

@@ -23,6 +23,9 @@ class SearchRequest(BaseModel):
         description="只在这些制度的已发布版本中检索；不填则检索全部已发布制度",
     )
     top_k: int = Field(default=8, ge=1, le=20, description="返回的条文数")
+    pipeline: str | None = Field(
+        default=None, max_length=64, description="检索方案；不填使用默认方案"
+    )
 
 
 class SearchDocument(BaseModel):
@@ -51,6 +54,8 @@ class SearchResult(BaseModel):
     dense_score: float | None
     keyword_rank: int | None
     keyword_score: float | None
+    visual_rank: int | None = None
+    visual_score: float | None = None
     document: SearchDocument
     version: SearchVersion
     ordinal: int
@@ -62,8 +67,13 @@ class SearchResult(BaseModel):
     # PDF 物理页序号；无分页格式为 null
     page_start: int | None
     page_end: int | None
+    # 页面上的位置 [x0, y0, x1, y1]（PDF 点）；方案不提供时为 null
+    bbox: list[float] | None = None
+    # text / table；方案不提供时为 null
+    modality: str | None = None
 
 
 class SearchResponse(BaseModel):
     query: str
+    pipeline: str
     results: list[SearchResult]

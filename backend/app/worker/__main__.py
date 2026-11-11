@@ -15,23 +15,31 @@ from app.db.engine import (
     create_session_factory,
 )
 from app.rag.indexing import create_embedding, get_vector_store
+from app.rag.pipelines import create_pipelines
 from app.storage import get_storage
 from app.worker.index import IndexHandler
 from app.worker.parse import ParseHandler
+from app.worker.pipeline import PipelineHandler
 from app.worker.runtime import Worker
 
 
 async def serve(settings: WorkerSettings) -> None:
     engine = create_engine(settings, isolation_level=WORKER_ISOLATION_LEVEL)
     embedding = create_embedding()
+    store = get_vector_store()
+    pipelines = create_pipelines(embedding, store)
+    default = pipelines.default.ingest
     worker = Worker(
         create_session_factory(engine),
         get_storage(),
         [
             ParseHandler(
-                get_parsing_settings(), auto_approve=settings.auto_approve_parsed
+                get_parsing_settings(),
+                auto_approve=settings.auto_approve_parsed,
+                parser=default.parser,
             ),
-            IndexHandler(embedding, get_vector_store()),
+            IndexHandler(embedding, store, indexers=default.indexers),
+            PipelineHandler(pipelines),
         ],
         poll_seconds=settings.worker_poll_seconds,
         lease_seconds=settings.job_lease_seconds,

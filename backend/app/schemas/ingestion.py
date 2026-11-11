@@ -205,6 +205,8 @@ class JobResponse(BaseModel):
     document_title: str
     file_name: str
     kind: JobKind
+    # 附加方案任务的入库方案名；默认方案的任务为 null
+    ingest: str | None
     status: JobStatus
     # downloading / converting / parsing / ocr / chunking / saving；未开始或已结束时为 null
     stage: str | None
