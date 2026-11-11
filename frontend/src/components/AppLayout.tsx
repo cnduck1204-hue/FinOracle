@@ -3,7 +3,9 @@ import {
   ArrowUpRight,
   BookOpen,
   ChevronRight,
+  FileStack,
   History,
+  ListChecks,
   Menu,
   MessageSquare,
   Plus,
@@ -20,9 +22,11 @@ import { Notice } from './Notice'
 const links = [
   { path: '/chat', label: '智能问答', icon: MessageSquare },
   { path: '/library', label: '制度库', icon: BookOpen, soon: true },
-  { path: '/search', label: '全文检索', icon: Search, soon: true },
+  { path: '/search', label: '全文检索', icon: Search },
   { path: '/history', label: '会话历史', icon: History, soon: true },
   { path: '/favorites', label: '我的收藏', icon: Star, soon: true },
+  { path: '/admin/documents', label: '制度文档', icon: FileStack, adminOnly: true },
+  { path: '/admin/imports', label: '导入任务', icon: ListChecks, adminOnly: true },
   { path: '/admin/users', label: '用户管理', icon: UsersRound, adminOnly: true },
 ]
 
@@ -58,7 +62,10 @@ export function AppLayout() {
   const pageTitle =
     location.pathname === '/account'
       ? '我的账号'
-      : links.find((link) => link.path === location.pathname)?.label || '工作台'
+      : links.find(
+          (link) =>
+            location.pathname === link.path || location.pathname.startsWith(`${link.path}/`),
+        )?.label || '工作台'
   if (!user) return null
   return (
     <>

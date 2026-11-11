@@ -7,7 +7,7 @@ from functools import lru_cache
 
 from app.core.config import get_embedding_settings, get_vector_store_settings
 from app.rag.indexing.embedding import DashScopeEmbedding, EmbeddingProvider
-from app.rag.indexing.text import MAX_INDEX_TEXT_CHARS, index_text
+from app.rag.indexing.text import MAX_INDEX_TEXT_CHARS, index_entries, index_text
 from app.rag.indexing.vector_store import (
     MilvusVectorStore,
     SearchHit,
@@ -56,5 +56,6 @@ __all__ = [
     "create_embedding",
     "get_query_embedding",
     "get_vector_store",
+    "index_entries",
     "index_text",
 ]
