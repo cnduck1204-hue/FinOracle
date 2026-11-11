@@ -15,6 +15,7 @@ from app.rag.indexing import (
     MilvusVectorStore,
     VectorRecord,
     collection_name,
+    index_entries,
     index_text,
 )
 
@@ -38,6 +39,81 @@ def test_index_text_prefixes_title_and_location():
     )
     assert index_text("", chunk(content="只有正文")) == "只有正文"
     assert len(index_text("t", chunk(content="长" * 9000))) == MAX_INDEX_TEXT_CHARS
+
+
+TITLE = "关于开展消费者权益保护自查的通知"
+ITEM_ONE = chunk(article="一、", content="一、各机构应当于本月底前完成自查。")
+ITEM_TWO = chunk(article="二、", content="二、发现问题的，应当立即整改。")
+
+
+def texts(title, chunks):
+    return [text for _, text in index_entries(title, chunks)]
+
+
+def test_clauses_carry_the_title_found_in_the_document():
+    assert texts("通知_扫描图片", [chunk(content=TITLE), ITEM_ONE, ITEM_TWO]) == [
+        f"通知_扫描图片 {TITLE} 一、\n一、各机构应当于本月底前完成自查。",
+        f"通知_扫描图片 {TITLE} 二、\n二、发现问题的，应当立即整改。",
+    ]
+
+
+def test_title_only_chunk_is_left_out_of_the_index():
+    title_chunk = chunk(content=TITLE)
+    kept = [c for c, _ in index_entries("x", [title_chunk, ITEM_ONE])]
+    assert kept == [ITEM_ONE]
+
+
+def test_overlapping_titles_are_not_repeated():
+    assert texts("消费者权益保护", [chunk(content=TITLE), ITEM_ONE])[0].startswith(
+        f"{TITLE} 一、\n"
+    )
+    assert texts(f"{TITLE}（2026年修订）", [chunk(content=TITLE), ITEM_ONE])[
+        0
+    ].startswith(f"{TITLE}（2026年修订） 一、\n")
+
+
+def test_preamble_with_body_stays_and_does_not_repeat_its_title():
+    preamble = chunk(content=f"{TITLE}\n各分支机构：\n为保护消费者权益，通知如下。")
+    assert texts("通知", [preamble, ITEM_ONE]) == [
+        f"通知\n{preamble.content}",
+        f"{TITLE} 一、\n{ITEM_ONE.content}",
+    ]
+
+
+def test_preamble_with_document_number_stays_searchable():
+    preamble = chunk(content=f"银发〔2026〕12号\n{TITLE}")
+    result = index_entries("办法", [preamble, ITEM_ONE])
+    assert [c for c, _ in result] == [preamble, ITEM_ONE]
+    assert result[1][1].startswith(f"办法 {TITLE} 一、\n")
+
+
+def test_multi_line_titles_are_joined():
+    preamble = chunk(content="中国人民银行关于规范\n支付业务管理的办法")
+    assert texts("办法", [preamble, ITEM_ONE]) == [
+        f"中国人民银行关于规范支付业务管理的办法 一、\n{ITEM_ONE.content}"
+    ]
+
+
+@pytest.mark.parametrize(
+    "chunks",
+    [
+        # 按长度切片：标题路径已在 heading 中
+        [
+            chunk(heading="指南", content="标题样式的行"),
+            chunk(heading="指南 / 流程", content="x"),
+        ],
+        # 没有识别到条文
+        [chunk(content="标题样式的行"), chunk(content="正文")],
+        # 只有一个切片时不能把它排除
+        [chunk(content=TITLE)],
+        # 第一行就是句子，不是标题
+        [chunk(content="为保护消费者权益，通知如下。"), ITEM_ONE],
+        # 第一个切片已属于章节
+        [chunk(chapter="第一章 总则", content="总则的说明"), ITEM_ONE],
+    ],
+)
+def test_documents_without_a_detectable_title_keep_every_chunk(chunks):
+    assert texts("办法", chunks) == [index_text("办法", c) for c in chunks]
 
 
 def test_collection_names_separate_models_and_dimensions():

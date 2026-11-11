@@ -10,7 +10,12 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.rag.indexing import EmbeddingProvider, VectorRecord, VectorStore, index_text
+from app.rag.indexing import (
+    EmbeddingProvider,
+    VectorRecord,
+    VectorStore,
+    index_entries,
+)
 from app.repositories.documents import (
     DocumentChunkRepository,
     DocumentRepository,
@@ -81,7 +86,8 @@ class IndexHandler:
             if not chunks:
                 raise document_empty()
             items = [
-                _Item(chunk.id, index_text(document.title, chunk)) for chunk in chunks
+                _Item(chunk.id, text)
+                for chunk, text in index_entries(document.title, chunks)
             ]
             return version.document_id, items
 
