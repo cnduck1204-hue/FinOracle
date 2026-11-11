@@ -262,7 +262,7 @@ def test_nothing_published_means_no_external_calls(search):
         {"query": "证券", "top_k": 0},
         {"query": "证券", "top_k": 21},
         {"query": "证券", "document_ids": ["not-a-uuid"]},
-        {"query": "证券", "document_ids": [str(uuid4()) for _ in range(51)]},
+        {"query": "证券", "document_ids": [str(uuid4()) for _ in range(201)]},
         {"query": "证券", "mode": "dense"},
     ],
 )

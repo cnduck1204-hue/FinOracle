@@ -9,7 +9,7 @@ from app.core.config import (
     get_vector_store_settings,
     get_visual_settings,
 )
-from app.models.document import DEFAULT_INGEST
+from app.rag import DEFAULT_INGEST
 from app.rag.indexing import (
     EmbeddingProvider,
     MilvusVectorStore,
@@ -17,22 +17,23 @@ from app.rag.indexing import (
     get_query_embedding,
     get_vector_store,
 )
+from app.rag.indexing.page_store import PageVectorStore
+from app.rag.indexing.text_index import TextIndexer, plain_entries
+from app.rag.indexing.visual_embedding import VisualEmbeddingProvider
+from app.rag.indexing.visual_index import StoredPageIndexer, VisualIndexer
 from app.rag.pipelines.base import IngestPipeline, Pipeline, RetrievalPipeline
 from app.rag.pipelines.errors import pipeline_not_found
+from app.rag.pipelines.page_images import PageImageParser
 from app.rag.pipelines.pdf_blocks import PdfBlockParser
 from app.rag.pipelines.structured import StructuredParser
-from app.rag.pipelines.text_index import TextIndexer, plain_entries
-from app.rag.pipelines.visual import (
-    PageVectorStore,
-    VisualEmbeddingProvider,
-    VisualHybridRetriever,
-    VisualIndexer,
-)
 from app.rag.retrieval import HybridRetriever
+from app.rag.retrieval.visual import VisualHybridRetriever, VisualOnlyRetriever
 
 STRUCTURED_PIPELINE = "structured-hybrid"
 VISUAL_PIPELINE = "pdf-block-visual"
 BLOCK_INGEST = "pdf-block"
+IMAGE_PIPELINE = "page-image-visual"
+IMAGE_INGEST = "page-image"
 
 
 class PipelineRegistry:
@@ -82,6 +83,7 @@ def build_pipelines(
     block_store: VectorStore,
     visual: VisualEmbeddingProvider,
     pages: PageVectorStore,
+    image_pages: PageVectorStore,
 ) -> PipelineRegistry:
     structured = Pipeline(
         name=STRUCTURED_PIPELINE,
@@ -109,7 +111,21 @@ def build_pipelines(
         retrieval=VisualHybridRetriever(embedding, block_store, visual, pages),
         unavailable_reason=None if visual.configured else "未配置视觉编码服务",
     )
-    return PipelineRegistry([structured, block_visual], default=STRUCTURED_PIPELINE)
+    page_image = Pipeline(
+        name=IMAGE_PIPELINE,
+        label="纯图片检索",
+        description="所有格式都转成页面图片，只用图片建索引和检索，结果返回页面图片；不抽取文字。",
+        ingest=IngestPipeline(
+            IMAGE_INGEST,
+            PageImageParser(parsing, ingest=IMAGE_INGEST, render_dpi=visual.render_dpi),
+            (StoredPageIndexer(visual, image_pages, ingest=IMAGE_INGEST),),
+        ),
+        retrieval=VisualOnlyRetriever(visual, image_pages),
+        unavailable_reason=None if visual.configured else "未配置视觉编码服务",
+    )
+    return PipelineRegistry(
+        [structured, block_visual, page_image], default=STRUCTURED_PIPELINE
+    )
 
 
 def create_pipelines(
@@ -133,6 +149,12 @@ def create_pipelines(
         pages=PageVectorStore(
             vector_settings,
             namespace=BLOCK_INGEST,
+            model=visual_settings.visual_model,
+            dimension=visual_settings.visual_dimension,
+        ),
+        image_pages=PageVectorStore(
+            vector_settings,
+            namespace=IMAGE_INGEST,
             model=visual_settings.visual_model,
             dimension=visual_settings.visual_dimension,
         ),

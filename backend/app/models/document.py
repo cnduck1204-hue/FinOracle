@@ -29,6 +29,7 @@ from sqlalchemy.dialects.mysql import DATETIME, MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, utc_now
+from app.rag import DEFAULT_INGEST as DEFAULT_INGEST
 
 # uploaded → parsing → parsed →（批准）→ indexing → ready →（发布）→ published → archived；
 # 解析或索引失败为 failed，可重试
@@ -54,9 +55,6 @@ VERSION_STATUSES: tuple[VersionStatus, ...] = get_args(VersionStatus)
 VALIDITY_STATUSES: tuple[ValidityStatus, ...] = get_args(ValidityStatus)
 PARSE_STATUSES: tuple[ParseStatus, ...] = get_args(ParseStatus)
 INDEX_STATUSES: tuple[IndexStatus, ...] = get_args(IndexStatus)
-
-# 默认入库方案的名字；切片与索引按入库方案隔离
-DEFAULT_INGEST = "structured"
 
 # 大整数主键：SQLite（仓库单元测试）仅 INTEGER PRIMARY KEY 自增
 _BIGINT_ID = BigInteger().with_variant(Integer(), "sqlite")

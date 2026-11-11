@@ -73,6 +73,14 @@ class MemoryStorage(ObjectStorage):
         self._check()
         self.objects.pop(check_key(key), None)
 
+    def delete_prefix(self, prefix: str) -> None:
+        self._check()
+        self.objects = {
+            key: value
+            for key, value in self.objects.items()
+            if not key.startswith(prefix)
+        }
+
 
 class Clock:
     def __init__(self, now: datetime = T0) -> None:

@@ -1,9 +1,11 @@
 import asyncio
+import io
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy import select
 
 from app.api.dependencies import require_current_user
@@ -16,6 +18,8 @@ from app.rag.indexing import SearchHit, collection_name
 from app.rag.indexing.errors import embedding_unavailable
 from app.rag.pipelines import (
     BLOCK_INGEST,
+    IMAGE_INGEST,
+    IMAGE_PIPELINE,
     STRUCTURED_PIPELINE,
     VISUAL_PIPELINE,
     IngestPipeline,
@@ -23,6 +27,7 @@ from app.rag.pipelines import (
     PipelineRegistry,
     build_pipelines,
 )
+from app.rag.pipelines.page_images import PageImageParser
 from app.rag.pipelines.pdf_blocks import parse_pdf_blocks
 from app.rag.pipelines.visual import (
     PageHit,
@@ -34,6 +39,7 @@ from app.schemas.search import SearchRequest
 from app.services import document_imports
 from app.services import pipelines as pipeline_service
 from app.services import search as search_service
+from app.storage.keys import page_image_key
 from app.worker.pipeline import PipelineHandler
 from app.worker.runtime import Worker
 from tests.parsing_samples import make_pdf
@@ -99,6 +105,7 @@ def make_registry(*, visual=None, pages=None):
         block_store=MemoryVectorStore(),
         visual=visual or FakeVisual(),
         pages=pages or MemoryPageStore(),
+        image_pages=MemoryPageStore(),
     )
     fakes.registry = build_pipelines(
         parsing=SETTINGS,
@@ -107,6 +114,7 @@ def make_registry(*, visual=None, pages=None):
         block_store=fakes.block_store,
         visual=fakes.visual,
         pages=fakes.pages,
+        image_pages=fakes.image_pages,
     )
     return fakes
 
@@ -314,6 +322,7 @@ def test_non_pdf_sources_are_rejected_when_building(tmp_path):
         assert {item.pipeline.name: item.supported for item in states} == {
             STRUCTURED_PIPELINE: True,
             VISUAL_PIPELINE: False,
+            IMAGE_PIPELINE: True,
         }
 
     run_with_database(tmp_path, scenario)
@@ -380,6 +389,7 @@ def test_build_index_validates_state_and_queues_one_job(tmp_path):
         assert {item.pipeline.name: item.status for item in states} == {
             STRUCTURED_PIPELINE: "not_built",
             VISUAL_PIPELINE: "building",
+            IMAGE_PIPELINE: "not_built",
         }
 
     run_with_database(tmp_path, scenario)
@@ -572,3 +582,206 @@ def test_pipelines_endpoint_lists_the_choices():
     assert body[STRUCTURED_PIPELINE]["default"] is True
     assert body[VISUAL_PIPELINE]["channels"] == ["dense", "keyword", "visual"]
     assert body[VISUAL_PIPELINE]["available"] is True
+
+
+def page_image_registry():
+    return make_registry()
+
+
+async def seed_image_job(env, file_name, content, **job):
+    return await seed(
+        env,
+        file_name=file_name,
+        content=content,
+        version_status="published",
+        job={"kind": "pipeline", "ingest": IMAGE_INGEST, **job},
+    )
+
+
+def test_page_image_pipeline_turns_pdf_pages_into_stored_images(tmp_path):
+    content = sample_pdf(tmp_path)
+
+    async def scenario(env):
+        fakes = page_image_registry()
+        ids = await seed_image_job(env, "办法.pdf", content)
+        await drain(make_worker(env, fakes))
+
+        job = await load(env, ImportJob, ids.job_id)
+        assert (job.status, job.error_code) == ("succeeded", None)
+        rows = await chunks_of(env, ids.version_id, IMAGE_INGEST)
+        assert [(row.page_start, row.content, row.modality) for row in rows] == [
+            (1, "", "page"),
+            (2, "", "page"),
+        ]
+        for page in (1, 2):
+            key = page_image_key(ids.document_id, ids.version_id, IMAGE_INGEST, page)
+            assert env.storage.objects[key].startswith(b"\x89PNG")
+        assert sorted(page for _, page in fakes.image_pages.records) == [1, 2]
+        # 不产生文本向量
+        assert fakes.block_store.records == {} and fakes.store.records == {}
+
+    run_with_database(tmp_path, scenario)
+
+
+def test_page_image_pipeline_accepts_image_files(tmp_path):
+    buffer = io.BytesIO()
+    Image.new("RGB", (40, 60), "white").save(buffer, format="BMP")
+
+    async def scenario(env):
+        fakes = page_image_registry()
+        ids = await seed_image_job(env, "通知.bmp", buffer.getvalue())
+        await drain(make_worker(env, fakes))
+        rows = await chunks_of(env, ids.version_id, IMAGE_INGEST)
+        assert [row.bbox for row in rows] == [[0.0, 0.0, 40.0, 60.0]]
+
+    run_with_database(tmp_path, scenario)
+
+
+def test_page_image_parser_converts_text_with_detected_encoding(tmp_path):
+    captured = {}
+
+    class Converter:
+        def to_pdf(self, path, workdir):
+            captured["text"] = path.read_text(encoding="utf-8-sig")
+            captured["suffix"] = path.suffix
+            return make_pdf(workdir / "converted.pdf", [[LONG_LINE]])
+
+    parser = PageImageParser(
+        SETTINGS,
+        ingest=IMAGE_INGEST,
+        render_dpi=36,
+        converter_factory=lambda settings: Converter(),
+    )
+    source = tmp_path / "source.txt"
+    source.write_bytes("第一条 内容。".encode("gb18030"))
+    pages = parser._convert(source, "txt", tmp_path)
+    assert captured == {"text": "第一条 内容。", "suffix": ".txt"}
+    assert len(pages) == 1 and pages[0][0].read_bytes().startswith(b"\x89PNG")
+
+
+def test_page_image_parser_uses_the_existing_converted_pdf(tmp_path):
+    content = sample_pdf(tmp_path)
+
+    async def scenario(env):
+        fakes = page_image_registry()
+        ids = await seed_image_job(env, "旧版.doc", None)
+        key = f"documents/{ids.document_id}/{ids.version_id}/converted.pdf"
+        env.storage.objects[key] = content
+        async with env.sessions() as session, session.begin():
+            version = await session.get(DocumentVersion, ids.version_id)
+            version.pdf_object_key = key
+        await drain(make_worker(env, fakes))
+        assert len(await chunks_of(env, ids.version_id, IMAGE_INGEST)) == 2
+
+    run_with_database(tmp_path, scenario)
+
+
+def test_rebuilding_page_images_removes_stale_pages(tmp_path):
+    content = sample_pdf(tmp_path)
+
+    async def scenario(env):
+        fakes = page_image_registry()
+        ids = await seed_image_job(env, "办法.pdf", content)
+        stale = page_image_key(ids.document_id, ids.version_id, IMAGE_INGEST, 9)
+        env.storage.objects[stale] = b"old"
+        await drain(make_worker(env, fakes))
+        assert stale not in env.storage.objects
+
+    run_with_database(tmp_path, scenario)
+
+
+def test_invalid_image_fails_without_retrying(tmp_path):
+    async def scenario(env):
+        fakes = page_image_registry()
+        ids = await seed_image_job(env, "通知.png", b"not an image")
+        await drain(make_worker(env, fakes))
+        job = await load(env, ImportJob, ids.job_id)
+        assert (job.status, job.error_code) == ("failed", "DOCUMENT_INVALID")
+
+    run_with_database(tmp_path, scenario)
+
+
+def test_visual_only_search_returns_page_images(tmp_path):
+    content = sample_pdf(tmp_path)
+
+    async def scenario(env):
+        fakes = page_image_registry()
+        ids = await seed_image_job(env, "办法.pdf", content)
+        await drain(make_worker(env, fakes))
+        fakes.image_pages.hits = [
+            PageHit(ids.version_id, 2, 9.0),
+            PageHit(ids.version_id, 1, 4.0),
+        ]
+        async with env.sessions() as session:
+            result = await search_service.search(
+                SearchRequest(query="报送频率", pipeline=IMAGE_PIPELINE, top_k=5),
+                session,
+                fakes.registry,
+            )
+        assert [item.page_start for item in result.results] == [2, 1]
+        first = result.results[0]
+        assert first.has_image and first.content == ""
+        assert (first.visual_rank, first.dense_rank) == (1, None)
+
+        async with env.sessions() as session:
+            size, chunks = await search_service.open_page_image(
+                first.chunk_id, session, env.storage
+            )
+        assert b"".join(chunks).startswith(b"\x89PNG") and size > 0
+
+    run_with_database(tmp_path, scenario)
+
+
+def test_page_images_are_limited_to_published_versions(tmp_path):
+    content = sample_pdf(tmp_path)
+
+    async def scenario(env):
+        fakes = page_image_registry()
+        ids = await seed_image_job(env, "办法.pdf", content)
+        await drain(make_worker(env, fakes))
+        rows = await chunks_of(env, ids.version_id, IMAGE_INGEST)
+        async with env.sessions() as session, session.begin():
+            version = await session.get(DocumentVersion, ids.version_id)
+            version.status = "archived"
+        async with env.sessions() as session:
+            with pytest.raises(AppException) as error:
+                await search_service.open_page_image(rows[0].id, session, env.storage)
+        assert error.value.code == "PAGE_IMAGE_NOT_FOUND"
+
+    run_with_database(tmp_path, scenario)
+
+
+def test_text_chunks_have_no_page_image(tmp_path):
+    content = sample_pdf(tmp_path)
+
+    async def scenario(env):
+        fakes = page_image_registry()
+        ids = await seed_pipeline_job(env, content)
+        await drain(make_worker(env, fakes))
+        rows = await chunks_of(env, ids.version_id, BLOCK_INGEST)
+        async with env.sessions() as session:
+            with pytest.raises(AppException) as error:
+                await search_service.open_page_image(rows[0].id, session, env.storage)
+        assert error.value.code == "PAGE_IMAGE_NOT_FOUND"
+
+    run_with_database(tmp_path, scenario)
+
+
+def test_deleting_a_version_removes_its_page_images(tmp_path):
+    content = sample_pdf(tmp_path)
+
+    async def scenario(env):
+        fakes = page_image_registry()
+        ids = await seed_image_job(env, "办法.pdf", content)
+        await drain(make_worker(env, fakes))
+        async with env.sessions() as session, session.begin():
+            version = await session.get(DocumentVersion, ids.version_id)
+            version.status = "ready"
+        async with env.sessions() as session:
+            await document_imports.delete_version(
+                ids.version_id, session, env.storage, fakes.store, fakes.registry
+            )
+        assert not [key for key in env.storage.objects if "/pages/" in key]
+        assert fakes.image_pages.records == {}
+
+    run_with_database(tmp_path, scenario)

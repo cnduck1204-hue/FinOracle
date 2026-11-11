@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { ExternalLink, FileSearch, LoaderCircle, Search } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { ValidityTag } from '../components/IngestionUi'
@@ -9,6 +9,43 @@ import { useResource } from '../lib/useResource'
 import type { SearchHit, SearchOutcome } from '../lib/types'
 
 const MAX_QUERY = 1000
+
+function PageImage({ hit }: { hit: SearchHit }) {
+  const { client } = useAuth()
+  const [url, setUrl] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let active = true
+    let created: string | null = null
+    setUrl(null)
+    setFailed(false)
+    client
+      .fetchSearchImage(hit.chunk_id)
+      .then((blob) => {
+        if (!active) return
+        created = URL.createObjectURL(blob)
+        setUrl(created)
+      })
+      .catch(() => {
+        if (active) setFailed(true)
+      })
+    return () => {
+      active = false
+      if (created) URL.revokeObjectURL(created)
+    }
+  }, [client, hit.chunk_id])
+  if (failed) return <p className="search-content">页面图片暂时无法读取。</p>
+  if (!url) return <div className="search-page-image search-page-loading">正在读取页面…</div>
+  return (
+    <a href={url} target="_blank" rel="noreferrer" aria-label="在新标签页查看页面原图">
+      <img
+        className="search-page-image"
+        src={url}
+        alt={`${hit.document.title} ${pageLabel(hit.page_start, hit.page_end)}`}
+      />
+    </a>
+  )
+}
 
 function Result({ hit, index }: { hit: SearchHit; index: number }) {
   const { document, version } = hit
@@ -23,11 +60,11 @@ function Result({ hit, index }: { hit: SearchHit; index: number }) {
         <span className="search-rank">{String(index + 1).padStart(2, '0')}</span>
         <div>
           <h3>{document.title}</h3>
-          <p>{articlePath(hit)}</p>
+          <p>{hit.has_image ? '页面图片' : articlePath(hit)}</p>
         </div>
         <ValidityTag status={version.validity_status} />
       </div>
-      <p className="search-content">{hit.content}</p>
+      {hit.has_image ? <PageImage hit={hit} /> : <p className="search-content">{hit.content}</p>}
       <dl className="search-citation">
         <div>
           <dt>版本</dt>

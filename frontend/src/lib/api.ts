@@ -499,6 +499,21 @@ export class AuthClient {
     return validateRecord(result, '任务信息')
   }
 
+  /** 页面图片需要鉴权，先取回 Blob 再显示。 */
+  async fetchSearchImage(chunkId: number): Promise<Blob> {
+    const generation = this.generation
+    const response = await this.protectedResponse(
+      `/search/images/${chunkId}`,
+      {},
+      generation,
+      SLOW_ADMIN_TIMEOUT_MS,
+    )
+    if (!response.ok) await this.readProtected<never>(response, generation)
+    const blob = await response.blob()
+    this.assertCurrent(generation)
+    return blob
+  }
+
   async listDocuments(query: DocumentListQuery = {}): Promise<Page<DocumentSummary>> {
     const params = pageParams(query)
     if (query.q?.trim()) params.set('q', query.q.trim())

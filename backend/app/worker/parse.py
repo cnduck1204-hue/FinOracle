@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import ParsingSettings
 from app.models.import_job import ImportJob
 from app.rag.parsing.converters import ConverterProvider
+from app.rag.parsing.providers import create_document_converter
 from app.rag.pipelines.base import ParsedUnits, SourceFile, UnitParser
 from app.rag.pipelines.structured import StructuredParser
 from app.repositories.documents import (
@@ -19,7 +20,6 @@ from app.repositories.documents import (
 )
 from app.repositories.import_jobs import ImportJobRepository
 from app.services.document_errors import version_not_found
-from app.services.document_parsing import create_document_converter
 from app.worker.runtime import JobContext
 
 
