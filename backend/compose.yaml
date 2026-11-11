@@ -43,6 +43,22 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+  # .doc、.rtf、.odt 转 PDF；独立容器运行 LibreOffice，自带中日韩字体
+  gotenberg:
+    image: gotenberg/gotenberg:8.39.0-libreoffice
+    command:
+      - gotenberg
+      # 低于 API 的 CONVERSION_TIMEOUT_SECONDS（默认 120 秒），超时时由 Gotenberg 先返回 503
+      - --api-timeout=110s
+      - --libreoffice-restart-after=10
+    ports:
+      - "127.0.0.1:${GOTENBERG_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
   api:
     build:
       context: .
@@ -74,11 +90,16 @@ services:
       ADMIN_USERNAME: "${ADMIN_USERNAME:-}"
       ADMIN_EMAIL: "${ADMIN_EMAIL:-}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+      GOTENBERG_URL: http://gotenberg:3000
+      CONVERSION_TIMEOUT_SECONDS: "${CONVERSION_TIMEOUT_SECONDS:-120}"
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # 转换服务未就绪时只影响 .doc 等格式的解析，不阻塞 API 启动
+      gotenberg:
+        condition: service_started
     healthcheck:
       test:
         - CMD
