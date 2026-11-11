@@ -1,0 +1,11 @@
+{"id": "aml-01", "corpus": "scan", "source": "aml", "type": "paraphrase", "query": "金融机构招聘新员工时，在反洗钱方面需要考察什么、做哪些培训？", "doc": "scan-aml", "pages": [2, 3], "anchor": "五、金融机构聘用人员时", "label": "五、"}
+{"id": "aml-02", "corpus": "scan", "source": "aml", "type": "paraphrase", "query": "研发新型金融产品的时候，要不要做洗钱风险评估并留下书面记录？", "doc": "scan-aml", "pages": [2], "anchor": "二、反洗钱风险控制体系", "label": "二、"}
+{"id": "aml-03", "corpus": "scan", "source": "aml", "type": "paraphrase", "query": "对业务条线和分支机构的反洗钱工作，内部审计应该怎么开展？", "doc": "scan-aml", "pages": [2], "anchor": "三、金融机构应定期开展反洗钱内部审计", "label": "三、"}
+{"id": "aml-04", "corpus": "scan", "source": "aml", "type": "paraphrase", "query": "股份制商业银行的董事会和监事会要如何防止内部人员参与洗钱？", "doc": "scan-aml", "pages": [2], "anchor": "四、金融机构应增强内部反洗钱工作报告路线", "label": "四、"}
+{"id": "aml-05", "corpus": "scan", "source": "aml", "type": "keyword", "query": "反洗钱 违规事件 举报机制", "doc": "scan-aml", "pages": [2], "anchor": "四、金融机构应增强内部反洗钱工作报告路线", "label": "四、"}
+{"id": "aml-06", "corpus": "scan", "source": "aml", "type": "paraphrase", "query": "负责反洗钱合规的高管需要具备什么能力，机构要提供哪些保障？", "doc": "scan-aml", "pages": [3], "anchor": "六、金融机构高级管理层", "label": "六、"}
+{"id": "aml-07", "corpus": "scan", "source": "aml", "type": "paraphrase", "query": "在洗钱风险较高岗位上的员工，培训强度有什么特别要求？", "doc": "scan-aml", "pages": [3], "anchor": "七、金融机构应建立反洗钱培训长效机制", "label": "七、"}
+{"id": "aml-08", "corpus": "scan", "source": "aml", "type": "paraphrase", "query": "媒体报道涉及员工反洗钱履职问题时，金融机构应该怎么办？", "doc": "scan-aml", "pages": [3], "anchor": "八、金融机构应及时梳理", "label": "八、"}
+{"id": "aml-09", "corpus": "scan", "source": "aml", "type": "paraphrase", "query": "金融机构违反这份反洗钱履职通知，人民银行依据哪条法律责令限期改正？", "doc": "scan-aml", "pages": [3], "anchor": "九、人民银行及其分支机构", "label": "九、"}
+{"id": "aml-10", "corpus": "scan", "source": "aml", "type": "keyword", "query": "银发〔2012〕178号", "doc": "scan-aml", "pages": [1], "anchor": "银发〔2012〕178号", "label": ""}
+{"id": "aml-11", "corpus": "scan", "source": "aml", "type": "keyword", "query": "中国人民银行办公厅 2012年7月18日印发", "doc": "scan-aml", "pages": [4], "anchor": "2012年7月18日印发", "label": ""}
