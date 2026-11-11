@@ -1,6 +1,6 @@
 # FinOracle 后端
 
-Python 3.11+、FastAPI、SQLAlchemy AsyncSession、MySQL 8.4、Redis 7.4。以下命令均在 `backend/` 目录执行。
+Python 3.11+、FastAPI、SQLAlchemy AsyncSession、MySQL 8.4、Redis 7.4，文档原件存放在 S3 API 对象存储中。以下命令均在 `backend/` 目录执行。
 
 ## 运行
 
@@ -11,18 +11,32 @@ python3 scripts/init_env.py
 docker compose up --build -d --wait
 ```
 
-默认 API 端口为 8001，MySQL 为 3306，Redis 为 6379，Gotenberg（文档格式转换）为 3000；都仅绑定本机。首次启动需拉取约 420 MB 的 Gotenberg 镜像。API 启动时运行 `alembic upgrade head`。可用 `docker compose logs api` 查看启动情况。
+默认 API 端口为 8001，MySQL 为 3306，Redis 为 6379，Gotenberg（文档格式转换）为 3000，对象存储为 9000（Web 控制台 9001，用 `S3_ACCESS_KEY` / `S3_SECRET_KEY` 登录）；都仅绑定本机。首次启动需拉取约 420 MB 的 Gotenberg 镜像和约 230 MB 的对象存储镜像。
+
+对象存储使用 Silo（`pgsty/silo`）：MinIO 社区版已停止维护，官方镜像不再公开提供，Silo 是它的维护分支，接口与数据格式相同。应用只通过 S3 API 访问，换成其他 S3 兼容存储只需修改 `S3_*` 配置。2026-11-05 之前生成的 `.env` 缺少 `S3_SECRET_KEY`，Compose 会提示该变量必填而拒绝启动；在 `backend/.env` 末尾追加一行随机值即可：
+
+```sh
+printf '\nS3_SECRET_KEY=%s\n' "$(python3 -c 'import secrets; print(secrets.token_hex(20))')" >> .env
+```
+
+API 启动时运行 `alembic upgrade head`。可用 `docker compose logs api` 查看启动情况。`worker` 服务使用同一镜像，在 API 健康后启动，后台执行文档解析等任务；它只拿到数据库、对象存储和格式转换配置，没有认证密钥。处理情况用 `docker compose logs worker` 查看。
 
 本机调试应用需要安装 [uv](https://docs.astral.sh/uv/)，使用容器中的数据库和缓存：
 
 ```sh
 uv sync --locked
-docker compose up -d --wait mysql redis
+docker compose up -d --wait mysql redis minio
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 此时接口文档位于 `http://127.0.0.1:8000/docs`。从项目根目录调用时使用 `uv --directory backend run ...`，确保读取正确的 `.env`。
+
+本机运行 worker（另开终端；`.env` 中 `GOTENBERG_URL` 设为 `http://127.0.0.1:3000` 才能转换 .doc 等格式）。Compose 中的 worker 也会认领同一张任务表，调试本机 worker 时先执行 `docker compose stop worker`：
+
+```sh
+uv run python -m app.worker
+```
 
 停止完整环境用 `docker compose down`，数据会保留。不要为普通重启加 `--volumes`。已有 MySQL 持久卷的账号密码不会随着 `.env` 自动改变；更换密码需同步修改数据库账号。
 
@@ -44,6 +58,17 @@ uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 | GET | `/admin/users/{user_id}` | 管理员查询用户详情 | 200 |
 | PATCH | `/admin/users/{user_id}/status` | 管理员启用或禁用普通用户 | 200 |
 | POST | `/admin/documents/parse` | 管理员上传文档并返回解析结果（预览，不入库） | 200 |
+| POST | `/admin/imports` | 上传文档入库：存储原件并创建解析任务，由 worker 后台解析 | 202 |
+| GET | `/admin/imports`、`/admin/imports/{job_id}` | 导入任务列表与详情（阶段、进度、错误） | 200 |
+| POST | `/admin/imports/{job_id}/retry` | 重新执行失败的任务 | 202 |
+| GET | `/admin/documents`、`/admin/documents/{document_id}` | 制度列表（搜索、是否已发布）与详情 | 200 |
+| PATCH | `/admin/documents/{document_id}` | 修改制度标题、发文机构 | 200 |
+| GET | `/admin/documents/{document_id}/versions` | 制度的全部版本 | 200 |
+| GET、PATCH | `/admin/versions/{version_id}` | 版本详情；修改登记信息与时效（不影响切片） | 200 |
+| GET | `/admin/versions/{version_id}/chunks` | 版本切片分页 | 200 |
+| GET | `/admin/versions/{version_id}/file` | 原件或可预览的 PDF（`variant=original\|pdf`） | 200 |
+| POST | `/admin/versions/{version_id}/reparse` | 用新参数或原参数重新解析 | 202 |
+| DELETE | `/admin/versions/{version_id}` | 删除未发布的版本及其切片、任务与文件 | 204 |
 
 注册提交 `username`、`email`、`password`、`confirm_password`；登录提交 `identifier`、`password`；刷新提交 `refresh_token`。退出与个人信息接口使用 `Authorization: Bearer <access_token>`。刷新接口不要求 Access Token。
 
@@ -59,7 +84,7 @@ Access Token 默认 30 分钟，Refresh Token 默认 7 天。刷新沿用同一�
 
 `.env.example` 列出完整默认项；真实 `.env` 不入库。`scripts/init_env.py` 为 MySQL 应用账号、root 账号和 JWT 分别生成随机值，已有 `.env` 会原样保留。
 
-配置按性质分三处：随部署机器变化的配置（含密钥与路径）定义在 `app/core/config.py`，值写在 `.env` 或环境变量中，其中 `Settings` 为应用配置，`ParsingSettings` 为不含密钥、命令行也能加载的解析配置；解析算法的阈值和默认值在 `app/rag/parsing/options.py`，随代码修改和测试，不读环境变量；单次请求可调的解析参数见 `app/schemas/document.py`。
+配置按性质分三处：随部署机器变化的配置（含密钥与路径）定义在 `app/core/config.py`，值写在 `.env` 或环境变量中，其中 `Settings` 为应用配置（包含 `DatabaseSettings` 的数据库配置），`ParsingSettings` 为不含密钥、命令行也能加载的解析配置，`StorageSettings` 为对象存储配置，`WorkerSettings` 为 worker 的数据库与调度配置（worker 不加载 `Settings`，因此不需要 JWT 密钥）；解析算法的阈值和默认值在 `app/rag/parsing/options.py`，随代码修改和测试，不读环境变量；单次请求可调的解析参数见 `app/schemas/document.py`。
 
 | 配置 | 默认值 / 说明 |
 | --- | --- |
@@ -76,6 +101,13 @@ Access Token 默认 30 分钟，Refresh Token 默认 7 天。刷新沿用同一�
 | `GOTENBERG_URL` | 可选；`.doc`、`.rtf`、`.odt` 交给 Gotenberg 转为 PDF。Compose 为 API 容器设为 `http://gotenberg:3000`，本机 `uvicorn` 或命令行用 `http://127.0.0.1:3000` |
 | `SOFFICE_PATH` | 可选；未配置 Gotenberg 时使用本机 LibreOffice `soffice`，为空时从 PATH 查找 |
 | `CONVERSION_TIMEOUT_SECONDS` | 单个文档格式转换超时，默认 120；Compose 中 Gotenberg 自身超时设为 110 秒 |
+| `S3_ENDPOINT_URL` | 对象存储地址，默认 `http://127.0.0.1:9000`；Compose 为 API 容器设为 `http://minio:9000` |
+| `S3_ACCESS_KEY`、`S3_SECRET_KEY` | 访问密钥；密钥必填（8 位以上），初始化脚本生成 40 位随机值。Compose 同时用作对象存储的根凭据，生产应改用只能访问文档桶的独立密钥 |
+| `S3_BUCKET` | 文档桶，默认 `finoracle-documents`；首次写入时自动创建 |
+| `S3_REGION` | `us-east-1` |
+| `MINIO_PORT`、`MINIO_CONSOLE_PORT` | Compose 对外端口，默认 9000、9001 |
+| `WORKER_POLL_SECONDS` | worker 空闲时的轮询间隔，默认 2 秒 |
+| `JOB_LEASE_SECONDS` | 任务租约，默认 60 秒（至少 20）；执行中每 5 秒续租，worker 退出后租约到期，任务由其他 worker 接手 |
 
 管理员配置全部未设置时跳过初始化，部分配置会拒绝启动。不提供默认管理员凭据，初始化脚本也不生成管理员密码。已有管理员时直接跳过创建，保留当前用户名、邮箱、密码和状态；管理员修改个人资料后，原初始化配置不会阻止重启。仅在尚无管理员时使用配置创建首个管理员，不提升已有普通用户。
 
@@ -105,7 +137,7 @@ scripts/parse_document.py ───┘
 3. 调用 `POST /auth/login` 获取管理员 `access_token`，在解析接口的 Auth 中选择 Bearer Token。
 4. Body 选 form-data，`file` 选择文件，其他字段按需填写后发送。
 
-直接请求 API 端口，不要经前端 8080 代理：Nginx 默认限制请求体 1 MB，读超时为 20 秒。
+前端 8080 代理对 `/api/v1/admin/` 路径放宽到请求体 55 MB、读超时 180 秒，其他路径仍为 1 MB、20 秒。大文件或扫描件的解析预览耗时可能更长，直接请求 API 端口。
 
 命令行不需要数据库和登录：
 
@@ -148,14 +180,16 @@ app/rag/parsing/
 ## 代码组织
 
 - `api/`：请求模型绑定、认证依赖、响应和路由。
-- `services/`：注册、登录、刷新、退出的业务规则及事务边界；`document_parsing.py` 为接口与命令行共用的解析服务。
-- `repositories/`、`models/`、`db/`：数据库访问、表模型和连接生命周期。
+- `services/`：注册、登录、刷新、退出的业务规则及事务边界；`document_parsing.py` 为接口、命令行与 worker 共用的解析服务；`document_imports.py`（导入、重试、重新解析、删除）与 `document_library.py`（制度、版本、切片、任务查询与原件读取）为入库管理，错误码集中在 `document_errors.py`。
+- `repositories/`、`models/`、`db/`：数据库访问、表模型和连接生命周期；`db/engine.py` 提供不读取配置的连接工厂，供 worker 使用。
 - `security/`：线程池中的 Argon2 运算、JWT 签发和校验。
 - `cache/`：失败计数、会话及令牌轮换的原子操作。
 - `core/`、`middleware/`：配置、统一错误、JSON 日志和请求追踪。
 - `rag/parsing/`：文档解析、OCR、清洗与切片；Parser、OCR、Chunker 各占一个目录，按基类实现并登记，结构见上文。
+- `worker/`：后台任务。`runtime.py` 负责认领（`FOR UPDATE SKIP LOCKED`，连接使用 READ COMMITTED）、续租、进度、重试与失败处理；`parse.py` 为解析任务。设计与状态流转见[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)第 7 节。
+- `storage/`：对象存储接口 `ObjectStorage` 与 S3 API 实现，对象键规则在 `storage/keys.py`。方法为同步调用（API 中经线程池调用）；对象不存在时抛出 `FileNotFoundError`，存储不可用返回 503 `STORAGE_UNAVAILABLE`。
 
-MySQL 保存用户；Redis 保存带有效期的会话状态，不保存原始令牌。会话创建、刷新轮换与退出分别通过 Lua 脚本原子执行。退出只撤销当前会话，不影响该账号的其他登录。
+MySQL 保存用户，以及入库所需的制度、版本、切片和导入任务（表结构见[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)第 6 节）；Redis 保存带有效期的会话状态，不保存原始令牌。会话创建、刷新轮换与退出分别通过 Lua 脚本原子执行。退出只撤销当前会话，不影响该账号的其他登录。
 
 会话命名空间为 `finoracle:v2:auth:*`，会话按有效期自动过期。
 
@@ -182,7 +216,7 @@ uv run python -m tests.integration
 uv run python -m tests.integration --fresh-install
 ```
 
-检查覆盖真实 HTTP 认证流程、事务回滚、Redis 回复丢失、刷新重放、并发轮换、退出登录与会话隔离。每项使用唯一测试数据并清理自己的记录。首次安装检查创建临时 Compose 项目和卷，只删除自己创建的临时资源。
+检查覆盖真实 HTTP 认证流程、事务回滚、Redis 回复丢失、刷新重放、并发轮换、退出登录与会话隔离，以及对象存储的读写、自动建桶和凭据错误（在临时桶中进行，结束后删除），入库表的数据库约束，worker 的并发认领与租约接管，和经 Compose 中 worker 执行的真实解析任务（.doc 经 Gotenberg 转换、损坏文件直接失败），以及通过 API 的完整入库流程（上传、解析、读取切片与原件、重复上传、重新解析、删除）。每项使用唯一测试数据并清理自己的记录。首次安装检查创建临时 Compose 项目和卷，只删除自己创建的临时资源。
 
 Postman Collection 与空白凭据环境位于 [postman/](postman/)。仅在可丢弃本地环境显式开启后运行，默认管理员流程关闭；账号与令牌串联说明见 [API 交接](../docs/backend-handoff.md)。
 
@@ -196,4 +230,4 @@ uv run python scripts/benchmark.py --allow-disposable-users --samples 20 --warmu
 
 ## 下一阶段
 
-用户资料修改、管理员初始化与用户管理由本次后端交付覆盖；资料编辑及管理员页面由前端团队接入。文档解析已提供离线命令（见上文）；文档上传、入库、向量化、检索和 RAG 问答尚未实现。配套认证前端运行方式见[前端说明](../frontend/README.md)，后端契约见 [API 交接](../docs/backend-handoff.md)，阶段背景见[基础需求](../docs/superpowers/specs/2026-09-20-backend-foundation-prd.md)。
+用户资料修改、管理员初始化与用户管理由本次后端交付覆盖；资料编辑及管理员页面由前端团队接入。文档解析已提供离线命令（见上文）；文档入库按[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)分步实施，目前完成对象存储、入库数据表、后台解析任务和管理端入库接口；批准、发布、向量化、检索和 RAG 问答尚未实现。配套认证前端运行方式见[前端说明](../frontend/README.md)，后端契约见 [API 交接](../docs/backend-handoff.md)，阶段背景见[基础需求](../docs/superpowers/specs/2026-09-20-backend-foundation-prd.md)。

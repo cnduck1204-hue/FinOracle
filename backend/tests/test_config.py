@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import ParsingSettings, Settings
+from app.core.config import ParsingSettings, Settings, StorageSettings
 
 
 def test_settings_default_values():
@@ -63,3 +63,42 @@ def test_conversion_timeout_must_be_positive(monkeypatch):
     monkeypatch.setenv("CONVERSION_TIMEOUT_SECONDS", "0")
     with pytest.raises(ValidationError):
         ParsingSettings(_env_file=None)
+
+
+def test_storage_settings_defaults_require_only_the_secret(monkeypatch):
+    for name in ("S3_ENDPOINT_URL", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET"):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(ValidationError):
+        StorageSettings(_env_file=None)
+
+    monkeypatch.setenv("S3_SECRET_KEY", "local-secret-value")
+    settings = StorageSettings(_env_file=None)
+
+    assert settings.s3_endpoint_url == "http://127.0.0.1:9000"
+    assert settings.s3_region == "us-east-1"
+    assert settings.s3_access_key == "finoracle"
+    assert settings.s3_bucket == "finoracle-documents"
+    assert "local-secret-value" not in repr(settings)
+
+
+def test_storage_endpoint_is_normalized(monkeypatch):
+    monkeypatch.setenv("S3_SECRET_KEY", "local-secret-value")
+    monkeypatch.setenv("S3_ENDPOINT_URL", " http://minio:9000/ ")
+    assert StorageSettings(_env_file=None).s3_endpoint_url == "http://minio:9000"
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("S3_ENDPOINT_URL", "minio:9000"),
+        ("S3_BUCKET", "Finoracle_Documents"),
+        ("S3_BUCKET", "ab"),
+        ("S3_BUCKET", "-leading-hyphen"),
+        ("S3_SECRET_KEY", "short"),
+    ],
+)
+def test_invalid_storage_settings_are_rejected(monkeypatch, name, value):
+    monkeypatch.setenv("S3_SECRET_KEY", "local-secret-value")
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValidationError):
+        StorageSettings(_env_file=None)

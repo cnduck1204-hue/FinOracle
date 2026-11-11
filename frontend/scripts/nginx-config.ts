@@ -11,7 +11,7 @@ export function normalizeApiPrefix(prefix: string): string {
 }
 
 export function createNginxConfig(prefix: string, template: string): string {
-  return template.replace('__API_PROXY_PREFIX__', `${normalizeApiPrefix(prefix)}/`)
+  return template.replaceAll('__API_PROXY_PREFIX__', `${normalizeApiPrefix(prefix)}/`)
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

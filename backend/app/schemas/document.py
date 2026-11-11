@@ -1,4 +1,4 @@
-"""文档解析的请求参数：CLI 与 API 共用同一套取值范围和校验。"""
+"""文档解析的请求参数：CLI、预览接口、导入与 worker 共用同一套取值范围和校验。"""
 
 from typing import Literal, Self
 
@@ -15,7 +15,9 @@ MIN_CHUNK_CHARS = 100
 MAX_CHUNK_CHARS = 4000
 
 
-class ParseRequest(BaseModel):
+class ParseOptionsInput(BaseModel):
+    """解析参数：入库版本保存这四项，重新解析时可整体替换。"""
+
     model_config = ConfigDict(extra="forbid")
 
     ocr: OcrChoice = Field(
@@ -36,15 +38,24 @@ class ParseRequest(BaseModel):
         ge=0,
         description="按长度切片时相邻切片的重叠字数",
     )
-    include_blocks: bool = Field(
-        default=False, description="是否在结果中返回清洗后的文本块"
-    )
 
     @model_validator(mode="after")
     def validate_overlap(self) -> Self:
         if self.chunk_overlap >= self.max_chunk_chars:
             raise ValueError("chunk_overlap 必须小于 max_chunk_chars")
         return self
+
+    def stored(self) -> dict[str, object]:
+        """保存到版本 parse_options 的内容。"""
+        return self.model_dump(include=set(ParseOptionsInput.model_fields))
+
+
+class ParseRequest(ParseOptionsInput):
+    """解析预览与命令行的参数。"""
+
+    include_blocks: bool = Field(
+        default=False, description="是否在结果中返回清洗后的文本块"
+    )
 
 
 class ParseUploadForm(ParseRequest):

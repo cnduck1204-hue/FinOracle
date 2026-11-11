@@ -86,6 +86,13 @@ assert settings.mysql_port == 3306
 assert settings.redis_host == "redis"
 assert settings.redis_port == 6379
 print("PASS: Non-root runtime, isolated dependencies and container hostnames")
+
+from app.core.config import get_storage_settings
+from app.storage import get_storage
+
+assert get_storage_settings().s3_endpoint_url == "http://minio:9000"
+get_storage().ensure_bucket()
+print("PASS: API container reaches object storage with the Compose credentials")
 """
     print(compose("exec", "-T", "api", "python", "-c", runtime_check))
 
@@ -99,9 +106,11 @@ print("PASS: Non-root runtime, isolated dependencies and container hostnames")
     )
     image_config = json.loads(image.stdout)[0]["Config"]
     image_env = {entry.split("=", 1)[0] for entry in image_config["Env"]}
-    assert "MYSQL_PASSWORD" not in image_env
-    assert "MYSQL_ROOT_PASSWORD" not in image_env
-    print("PASS: Database credentials are not embedded in image environment")
+    for name in ("MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD", "S3_SECRET_KEY"):
+        assert name not in image_env
+    print(
+        "PASS: Database and storage credentials are not embedded in image environment"
+    )
 
     assert "(head)" in compose("exec", "-T", "api", "alembic", "current")
     compose("exec", "-T", "api", "alembic", "check")

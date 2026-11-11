@@ -13,6 +13,13 @@ it('builds the same API route for default and custom prefixes', () => {
   expect(normalizeApiPrefix('/financial/v1')).toBe('/financial/v1')
 })
 
+it('applies the prefix to the nested administrator upload route', () => {
+  const template = 'location ^~ __API_PROXY_PREFIX__ { location ^~ __API_PROXY_PREFIX__admin/ { } }'
+  expect(createNginxConfig('/api/v1', template)).toBe(
+    'location ^~ /api/v1/ { location ^~ /api/v1/admin/ { } }',
+  )
+})
+
 it('rejects root, remote URLs and configuration injection as API prefixes', () => {
   for (const prefix of [
     '/',

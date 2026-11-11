@@ -3,14 +3,23 @@
 import secrets
 from pathlib import Path
 
+# Generated secret lengths in bytes (hex doubles them); the S3 secret stays within the
+# 40 characters many S3 implementations accept.
+SECRET_BYTES = {
+    "MYSQL_PASSWORD": 32,
+    "MYSQL_ROOT_PASSWORD": 32,
+    "JWT_SECRET_KEY": 32,
+    "S3_SECRET_KEY": 20,
+}
+
 
 def initialize_env(directory: Path) -> bool:
     target = directory / ".env"
     if target.exists():
         return False
     content = (directory / ".env.example").read_text(encoding="utf-8")
-    for name in ("MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD", "JWT_SECRET_KEY"):
-        content = content.replace(f"{name}=\n", f"{name}={secrets.token_hex(32)}\n")
+    for name, size in SECRET_BYTES.items():
+        content = content.replace(f"{name}=\n", f"{name}={secrets.token_hex(size)}\n")
     # Exclusive creation also protects against two first-run commands racing.
     try:
         with target.open("x", encoding="utf-8") as output:

@@ -1,16 +1,13 @@
-from datetime import UTC, datetime
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import Enum, Integer, String, UniqueConstraint, Uuid
 from sqlalchemy.dialects.mysql import DATETIME
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base
+from app.db.base import Base, utc_now
 
-
-def utc_now() -> datetime:
-    """MySQL DATETIME 按 UTC 存储；响应模型负责补回 UTC 时区标识。"""
-    return datetime.now(UTC).replace(tzinfo=None)
+__all__ = ["User", "utc_now"]
 
 
 class User(Base):

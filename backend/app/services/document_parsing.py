@@ -1,4 +1,4 @@
-"""文档解析服务：CLI 与 API 共用，负责组装解析选项、创建转换器与 OCR、裁剪输出。"""
+"""文档解析服务：CLI、API 与 worker 共用，负责组装解析选项、创建转换器与 OCR、裁剪输出。"""
 
 import shutil
 import tempfile
@@ -37,7 +37,7 @@ async def parse_upload(
     # 不支持的类型和超限文件在复制前拒绝
     if suffix.lstrip(".") not in SUPPORTED_TYPES:
         raise unsupported_type(suffix.lstrip("."))
-    max_bytes = _options(request).max_file_bytes
+    max_bytes = parse_options(request).max_file_bytes
     if upload.size is not None and upload.size > max_bytes:
         raise file_too_large(max_bytes)
 
@@ -48,14 +48,16 @@ async def parse_upload(
     return result.model_copy(update={"file_name": file_name})
 
 
-def _options(request: ParseRequest) -> ParseOptions:
+def parse_options(request: ParseRequest) -> ParseOptions:
+    """把请求参数换成解析选项；输入限制与阈值使用默认值。"""
     return ParseOptions(
         max_chunk_chars=request.max_chunk_chars,
         chunk_overlap=request.chunk_overlap,
     )
 
 
-def _converter(settings: ParsingSettings) -> ConverterProvider:
+def create_document_converter(settings: ParsingSettings) -> ConverterProvider:
+    """配置了 Gotenberg 时使用它，否则使用本机 LibreOffice。"""
     return create_converter(
         gotenberg_url=settings.gotenberg_url,
         soffice_path=settings.soffice_path,
@@ -66,10 +68,10 @@ def _converter(settings: ParsingSettings) -> ConverterProvider:
 def _parse(path: Path, request: ParseRequest, settings: ParsingSettings) -> ParseResult:
     result = run_pipeline(
         path,
-        converter=_converter(settings),
-        ocr=_ocr_provider(request.ocr),
+        converter=create_document_converter(settings),
+        ocr=ocr_provider(request.ocr),
         chunker=request.chunker,
-        options=_options(request),
+        options=parse_options(request),
     )
     if request.include_blocks:
         return result
@@ -84,7 +86,7 @@ def _parse_exclusively(
 
 
 @lru_cache
-def _ocr_provider(name: str) -> OCRProvider | None:
+def ocr_provider(name: str) -> OCRProvider | None:
     """OCR 引擎加载模型需要数秒，按名称缓存后在进程内复用。"""
     return create_ocr(name)
 
