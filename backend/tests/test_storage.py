@@ -266,3 +266,32 @@ def test_open_missing_object_fails_before_streaming(stubbed, code):
     stubber.add_client_error("get_object", code, http_status_code=404)
     with pytest.raises(FileNotFoundError):
         storage.open_object("x/missing.pdf")
+
+
+def test_delete_prefix_walks_every_page(stubbed):
+    storage, stubber = stubbed
+    stubber.add_response(
+        "list_objects_v2",
+        {
+            "Contents": [{"Key": "a/pages/p1.png"}],
+            "IsTruncated": True,
+            "NextContinuationToken": "next",
+        },
+        {"Bucket": BUCKET, "Prefix": "a/pages/"},
+    )
+    stubber.add_response(
+        "delete_object", {}, {"Bucket": BUCKET, "Key": "a/pages/p1.png"}
+    )
+    stubber.add_response(
+        "list_objects_v2",
+        {"IsTruncated": False},
+        {"Bucket": BUCKET, "Prefix": "a/pages/", "ContinuationToken": "next"},
+    )
+    storage.delete_prefix("a/pages/")
+    stubber.assert_no_pending_responses()
+
+
+def test_delete_prefix_ignores_a_missing_bucket(stubbed):
+    storage, stubber = stubbed
+    stubber.add_client_error("list_objects_v2", "NoSuchBucket", http_status_code=404)
+    storage.delete_prefix("a/pages/")

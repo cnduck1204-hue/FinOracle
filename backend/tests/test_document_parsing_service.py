@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from app.core.config import ParsingSettings
 from app.core.exceptions import AppException
+from app.rag.parsing import providers
 from app.rag.parsing.options import MIB
 from app.schemas.document import ParseRequest
 from app.services import document_parsing
@@ -78,7 +79,7 @@ def test_ocr_provider_is_created_once_per_name(tmp_path, monkeypatch):
     def fake_create(name):
         created.append(name)
 
-    monkeypatch.setattr(document_parsing, "create_ocr", fake_create)
+    monkeypatch.setattr(providers, "create_ocr", fake_create)
     path = tmp_path / "notes.txt"
     path.write_text("正文", encoding="utf-8")
     for _ in range(2):

@@ -12,6 +12,8 @@ from app.rag.pipelines.base import (
 from app.rag.pipelines.errors import pipeline_unavailable, source_unsupported
 from app.rag.pipelines.registry import (
     BLOCK_INGEST,
+    IMAGE_INGEST,
+    IMAGE_PIPELINE,
     STRUCTURED_PIPELINE,
     VISUAL_PIPELINE,
     PipelineRegistry,
@@ -22,6 +24,8 @@ from app.rag.pipelines.registry import (
 
 __all__ = [
     "BLOCK_INGEST",
+    "IMAGE_INGEST",
+    "IMAGE_PIPELINE",
     "STRUCTURED_PIPELINE",
     "VISUAL_PIPELINE",
     "IndexTarget",

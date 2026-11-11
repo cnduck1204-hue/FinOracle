@@ -27,3 +27,7 @@ def vector_store_unavailable() -> AppException:
         message="向量库暂时不可用，请稍后重试",
         status_code=503,
     )
+
+
+def visual_unavailable(message: str = "视觉编码服务暂时不可用") -> AppException:
+    return AppException(code="VISUAL_UNAVAILABLE", message=message, status_code=503)

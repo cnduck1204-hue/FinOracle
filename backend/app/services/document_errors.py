@@ -1,6 +1,9 @@
 """制度文档导入与管理的业务错误，错误码集中在此。解析本身的错误见 app.rag.parsing.errors。"""
 
 from app.core.exceptions import AppException
+from app.rag.parsing.errors import document_empty as document_empty
+from app.rag.parsing.errors import file_missing as file_missing
+from app.rag.parsing.errors import invalid_parse_options as invalid_parse_options
 
 
 def document_not_found() -> AppException:
@@ -50,22 +53,4 @@ def job_not_retryable() -> AppException:
 def file_not_available() -> AppException:
     return AppException(
         code="FILE_NOT_AVAILABLE", message="该版本没有可预览的 PDF", status_code=404
-    )
-
-
-def file_missing() -> AppException:
-    return AppException(
-        code="DOCUMENT_FILE_MISSING", message="文档原件不存在", status_code=422
-    )
-
-
-def document_empty() -> AppException:
-    return AppException(
-        code="DOCUMENT_EMPTY", message="文档中没有可用的文本", status_code=422
-    )
-
-
-def invalid_parse_options() -> AppException:
-    return AppException(
-        code="PARSE_OPTIONS_INVALID", message="解析参数不合法", status_code=422
     )

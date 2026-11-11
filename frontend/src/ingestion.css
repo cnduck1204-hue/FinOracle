@@ -171,6 +171,21 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.search-page-image {
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  margin: 14px 0;
+  border: 1px solid var(--rule);
+  background: #fff;
+}
+.search-page-loading {
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .search-citation {
   display: flex;
   flex-wrap: wrap;

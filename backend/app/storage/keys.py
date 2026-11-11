@@ -16,6 +16,15 @@ def converted_pdf_key(document_id: UUID, version_id: UUID) -> str:
     return f"{version_prefix(document_id, version_id)}/converted.pdf"
 
 
+def page_images_prefix(document_id: UUID, version_id: UUID, ingest: str) -> str:
+    return f"{version_prefix(document_id, version_id)}/pages/{ingest}/"
+
+
+def page_image_key(document_id: UUID, version_id: UUID, ingest: str, page: int) -> str:
+    """入库方案渲染的页面图片。"""
+    return f"{page_images_prefix(document_id, version_id, ingest)}p{page:05d}.png"
+
+
 def blocks_key(document_id: UUID, version_id: UUID) -> str:
     """清洗后的文本块，供校验页对照原文。"""
     return f"{version_prefix(document_id, version_id)}/blocks.json"

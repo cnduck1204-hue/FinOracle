@@ -6,8 +6,10 @@
 
 import logging
 import time
+from collections.abc import Iterator
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.exceptions import AppException
 from app.rag.pipelines import PipelineRegistry, pipeline_unavailable
@@ -22,8 +24,12 @@ from app.schemas.search import (
     SearchResult,
     SearchVersion,
 )
+from app.storage import ObjectStorage
+from app.storage.keys import page_image_key
 
 logger = logging.getLogger(__name__)
+
+PAGE_MODALITY = "page"
 
 # 依赖服务的这些错误对用户统一表现为检索暂不可用；具体原因只记日志
 _DEPENDENCY_FAILURES = frozenset(
@@ -36,12 +42,35 @@ _DEPENDENCY_FAILURES = frozenset(
 )
 
 
+def page_image_not_found() -> AppException:
+    return AppException(
+        code="PAGE_IMAGE_NOT_FOUND", message="页面图片不存在", status_code=404
+    )
+
+
 def search_unavailable() -> AppException:
     return AppException(
         code="SEARCH_UNAVAILABLE",
         message="检索服务暂时不可用，请稍后重试",
         status_code=503,
     )
+
+
+async def open_page_image(
+    chunk_id: int, session: AsyncSession, storage: ObjectStorage
+) -> tuple[int, Iterator[bytes]]:
+    """读取检索结果的页面图片，只开放已发布版本；返回 (字节数, 内容迭代器)。"""
+    async with session.begin():
+        rows = await DocumentChunkRepository(session).published_with_context([chunk_id])
+    if not rows or rows[0][0].modality != PAGE_MODALITY:
+        raise page_image_not_found()
+    chunk, version, document = rows[0]
+    key = page_image_key(document.id, version.id, chunk.ingest, chunk.page_start)
+    try:
+        info, chunks = await run_in_threadpool(storage.open_object, key)
+    except FileNotFoundError as error:
+        raise page_image_not_found() from error
+    return info.size, chunks
 
 
 async def search(
@@ -120,6 +149,7 @@ async def search(
                     page_end=chunk.page_end,
                     bbox=chunk.bbox,
                     modality=chunk.modality,
+                    has_image=chunk.modality == PAGE_MODALITY,
                 )
             )
     # 只记录耗时与数量，不记录用户的问题

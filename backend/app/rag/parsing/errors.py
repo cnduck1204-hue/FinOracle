@@ -40,3 +40,29 @@ def conversion_unavailable(message: str) -> AppException:
 
 def ocr_unavailable(message: str) -> AppException:
     return AppException(code="OCR_UNAVAILABLE", message=message, status_code=503)
+
+
+def file_missing() -> AppException:
+    return AppException(
+        code="DOCUMENT_FILE_MISSING", message="文档原件不存在", status_code=422
+    )
+
+
+def document_empty() -> AppException:
+    return AppException(
+        code="DOCUMENT_EMPTY", message="文档中没有可用的文本", status_code=422
+    )
+
+
+def invalid_parse_options() -> AppException:
+    return AppException(
+        code="PARSE_OPTIONS_INVALID", message="解析参数不合法", status_code=422
+    )
+
+
+def source_unsupported() -> AppException:
+    return AppException(
+        code="PIPELINE_SOURCE_UNSUPPORTED",
+        message="该方案只能处理 PDF，或已转换为 PDF 的文档",
+        status_code=422,
+    )

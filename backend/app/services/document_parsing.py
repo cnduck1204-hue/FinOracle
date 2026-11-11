@@ -1,22 +1,20 @@
-"""文档解析服务：CLI、API 与 worker 共用，负责组装解析选项、创建转换器与 OCR、裁剪输出。"""
+"""文档解析服务，适配上传请求、管理临时文件并裁剪预览输出。"""
 
 import shutil
 import tempfile
 import threading
-from functools import lru_cache
 from pathlib import Path
 
 from fastapi import UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import ParsingSettings, get_parsing_settings
-from app.rag.parsing import SUPPORTED_TYPES, ParseOptions, ParseResult, create_ocr
+from app.rag.parsing import SUPPORTED_TYPES, ParseResult
 from app.rag.parsing import parse_file as run_pipeline
-from app.rag.parsing.converters import ConverterProvider, create_converter
 from app.rag.parsing.errors import file_too_large, unsupported_type
-from app.rag.parsing.ocr import OCRProvider
 from app.rag.parsing.options import MIB
-from app.schemas.document import ParseRequest
+from app.rag.parsing.parameters import ParseRequest, parse_options
+from app.rag.parsing.providers import create_document_converter, ocr_provider
 
 # 解析和 OCR 占用大量 CPU，且 OCR 引擎实例在请求间共享，接口同一时间只解析一个文档
 _PARSE_LOCK = threading.Lock()
@@ -48,23 +46,6 @@ async def parse_upload(
     return result.model_copy(update={"file_name": file_name})
 
 
-def parse_options(request: ParseRequest) -> ParseOptions:
-    """把请求参数换成解析选项；输入限制与阈值使用默认值。"""
-    return ParseOptions(
-        max_chunk_chars=request.max_chunk_chars,
-        chunk_overlap=request.chunk_overlap,
-    )
-
-
-def create_document_converter(settings: ParsingSettings) -> ConverterProvider:
-    """配置了 Gotenberg 时使用它，否则使用本机 LibreOffice。"""
-    return create_converter(
-        gotenberg_url=settings.gotenberg_url,
-        soffice_path=settings.soffice_path,
-        timeout_seconds=settings.conversion_timeout_seconds,
-    )
-
-
 def _parse(path: Path, request: ParseRequest, settings: ParsingSettings) -> ParseResult:
     result = run_pipeline(
         path,
@@ -83,12 +64,6 @@ def _parse_exclusively(
 ) -> ParseResult:
     with _PARSE_LOCK:
         return _parse(path, request, settings)
-
-
-@lru_cache
-def ocr_provider(name: str) -> OCRProvider | None:
-    """OCR 引擎加载模型需要数秒，按名称缓存后在进程内复用。"""
-    return create_ocr(name)
 
 
 def _save(upload: UploadFile, path: Path) -> None:

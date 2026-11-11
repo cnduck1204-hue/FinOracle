@@ -48,6 +48,10 @@ class ObjectStorage(ABC):
     def delete(self, key: str) -> None:
         """删除对象；对象或桶不存在时视为已删除。"""
 
+    @abstractmethod
+    def delete_prefix(self, prefix: str) -> None:
+        """删除前缀下的全部对象；前缀不存在时视为已删除。"""
+
 
 def check_key(key: str) -> str:
     """对象键由服务端按固定规则生成；拒绝空键、绝对路径和上级目录，防止误写其他前缀。"""
