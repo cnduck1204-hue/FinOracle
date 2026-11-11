@@ -79,6 +79,33 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+  # 切片向量与 BM25 关键词索引。单容器运行：内嵌 etcd、数据存本地卷（官方 standalone_embed.sh 的配置）
+  milvus:
+    image: milvusdb/milvus:v2.6.23
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      ETCD_CONFIG_PATH: /milvus/configs/embedEtcd.yaml
+      COMMON_STORAGETYPE: local
+      DEPLOY_MODE: STANDALONE
+    configs:
+      - source: milvus_embed_etcd
+        target: /milvus/configs/embedEtcd.yaml
+      - source: milvus_user
+        target: /milvus/configs/user.yaml
+    ports:
+      - "127.0.0.1:${MILVUS_PORT:-19530}:19530"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
   api:
     build:
       context: .
@@ -117,6 +144,13 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-finoracle}
       S3_SECRET_KEY: "${S3_SECRET_KEY:?S3_SECRET_KEY is required}"
       S3_BUCKET: ${S3_BUCKET:-finoracle-documents}
+      # 检索时向量化问题并查询 Milvus；下架、替换或删除版本时清理向量。模型与维度须与 worker 一致
+      MILVUS_URI: http://milvus:19530
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-v4}
+      EMBEDDING_DIMENSION: "${EMBEDDING_DIMENSION:-1024}"
+      # 未设置时检索返回 503，其余接口不受影响
+      DASHSCOPE_API_KEY: "${DASHSCOPE_API_KEY:-}"
     depends_on:
       mysql:
         condition: service_healthy
@@ -125,8 +159,10 @@ services:
       # 转换服务未就绪时只影响 .doc 等格式的解析，不阻塞 API 启动
       gotenberg:
         condition: service_started
-      # 对象存储只用于文档导入，未就绪时不阻塞认证等其他接口
+      # 对象存储与向量库只用于文档入库，未就绪时不阻塞认证等其他接口
       minio:
+        condition: service_started
+      milvus:
         condition: service_started
     healthcheck:
       test:
@@ -141,7 +177,7 @@ services:
       timeout: 10s
       retries: 10
       start_period: 20s
-  # 后台执行解析等耗时任务。使用 API 镜像，仅传入数据库、对象存储与格式转换配置，不含认证密钥
+  # 后台执行解析与向量化。使用 API 镜像，只传入所需的数据库、存储、转换与向量化配置，不含认证密钥
   worker:
     image: finoracle-api:local
     # 镜像由 api 服务构建，不从镜像仓库拉取
@@ -164,6 +200,13 @@ services:
       S3_BUCKET: ${S3_BUCKET:-finoracle-documents}
       WORKER_POLL_SECONDS: "${WORKER_POLL_SECONDS:-2}"
       JOB_LEASE_SECONDS: "${JOB_LEASE_SECONDS:-60}"
+      AUTO_APPROVE_PARSED: "${AUTO_APPROVE_PARSED:-true}"
+      MILVUS_URI: http://milvus:19530
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-v4}
+      EMBEDDING_DIMENSION: "${EMBEDDING_DIMENSION:-1024}"
+      # 未设置时向量化任务失败并提示配置；解析不受影响
+      DASHSCOPE_API_KEY: "${DASHSCOPE_API_KEY:-}"
     # 停止时先完成当前任务；超时被终止的任务在租约到期后由其他 worker 重新执行
     stop_grace_period: 30s
     depends_on:
@@ -174,7 +217,21 @@ services:
         condition: service_started
       gotenberg:
         condition: service_started
+      milvus:
+        condition: service_started
 volumes:
   mysql_data:
   redis_data:
   minio_data:
+  milvus_data:
+configs:
+  milvus_embed_etcd:
+    content: |
+      listen-client-urls: http://0.0.0.0:2379
+      advertise-client-urls: http://0.0.0.0:2379
+      quota-backend-bytes: 4294967296
+      auto-compaction-mode: revision
+      auto-compaction-retention: '1000'
+  milvus_user:
+    content: |
+      # Extra config to override default milvus.yaml

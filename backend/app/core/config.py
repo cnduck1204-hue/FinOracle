@@ -166,6 +166,67 @@ class WorkerSettings(DatabaseSettings):
     worker_poll_seconds: float = Field(default=2, gt=0)
     # 任务租约；worker 每 5 秒续租一次，进程退出后租约到期，任务由其他 worker 接手
     job_lease_seconds: int = Field(default=60, ge=20)
+    # 解析完成且没有待 OCR 图片的版本自动批准并向量化；关闭后须管理员调用批准接口
+    auto_approve_parsed: bool = True
+
+
+_EMBEDDING_DIMENSIONS = frozenset({64, 128, 256, 512, 768, 1024, 1536, 2048})
+
+
+class EmbeddingSettings(BaseSettings):
+    """向量化服务：DashScope 的 OpenAI 兼容接口。离线入库与在线查询必须使用同一模型和维度。"""
+
+    # 北京地域；国际站为 https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+    embedding_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    embedding_model: str = Field(default="text-embedding-v4", pattern=r"^[\w.-]+$")
+    # text-embedding-v4 支持 64、128、256、512、768、1024、1536、2048
+    embedding_dimension: int = 1024
+    # text-embedding-v4 每次最多 10 条，超过返回 400
+    embedding_batch_size: int = Field(default=10, ge=1, le=10)
+    embedding_timeout_seconds: float = Field(default=30, gt=0)
+    dashscope_api_key: SecretStr | None = Field(default=None, repr=False)
+
+    @field_validator("embedding_base_url")
+    @classmethod
+    def validate_base_url(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("EMBEDDING_BASE_URL 必须以 http:// 或 https:// 开头")
+        return value
+
+    @field_validator("embedding_dimension")
+    @classmethod
+    def validate_dimension(cls, value: int) -> int:
+        if value not in _EMBEDDING_DIMENSIONS:
+            raise ValueError(
+                f"EMBEDDING_DIMENSION 须为 {sorted(_EMBEDDING_DIMENSIONS)} 之一"
+            )
+        return value
+
+    @field_validator("dashscope_api_key")
+    @classmethod
+    def blank_key_as_none(cls, value: SecretStr | None) -> SecretStr | None:
+        return value if value and value.get_secret_value().strip() else None
+
+    model_config = _ENV_SOURCE
+
+
+class VectorStoreSettings(BaseSettings):
+    """Milvus 向量库。集合名由前缀、模型与维度组成，换模型时写入新集合。"""
+
+    milvus_uri: str = "http://127.0.0.1:19530"
+    milvus_token: SecretStr | None = Field(default=None, repr=False)
+    milvus_collection_prefix: str = Field(
+        default="finoracle_chunks", pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,100}$"
+    )
+    milvus_timeout_seconds: float = Field(default=30, gt=0)
+
+    @field_validator("milvus_token")
+    @classmethod
+    def blank_token_as_none(cls, value: SecretStr | None) -> SecretStr | None:
+        return value if value and value.get_secret_value().strip() else None
+
+    model_config = _ENV_SOURCE
 
 
 @lru_cache
@@ -181,3 +242,13 @@ def get_parsing_settings() -> ParsingSettings:
 @lru_cache
 def get_storage_settings() -> StorageSettings:
     return StorageSettings()
+
+
+@lru_cache
+def get_embedding_settings() -> EmbeddingSettings:
+    return EmbeddingSettings()
+
+
+@lru_cache
+def get_vector_store_settings() -> VectorStoreSettings:
+    return VectorStoreSettings()

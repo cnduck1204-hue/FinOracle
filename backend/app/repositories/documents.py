@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, func, insert, or_, select
+from sqlalchemy import Row, delete, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import (
@@ -108,13 +108,28 @@ class DocumentVersionRepository:
             )
         )
 
-    async def get_published(self, document_id: UUID) -> DocumentVersion | None:
-        return await self.session.scalar(
-            select(DocumentVersion).where(
-                DocumentVersion.document_id == document_id,
-                DocumentVersion.status == "published",
-            )
+    async def get_published(
+        self, document_id: UUID, *, for_update: bool = False
+    ) -> DocumentVersion | None:
+        """for_update 时用锁定读取最新已提交的数据，发布替换前必须如此读取。"""
+        statement = select(DocumentVersion).where(
+            DocumentVersion.document_id == document_id,
+            DocumentVersion.status == "published",
         )
+        if for_update:
+            statement = statement.with_for_update()
+        return await self.session.scalar(statement)
+
+    async def published_ids(
+        self, document_ids: Sequence[UUID] | None = None
+    ) -> list[UUID]:
+        """已发布版本的 ID，可限定在指定制度内；检索只在这些版本中进行。"""
+        statement = select(DocumentVersion.id).where(
+            DocumentVersion.status == "published"
+        )
+        if document_ids is not None:
+            statement = statement.where(DocumentVersion.document_id.in_(document_ids))
+        return list(await self.session.scalars(statement))
 
     async def list_for_documents(
         self, document_ids: Sequence[UUID]
@@ -196,6 +211,30 @@ class DocumentChunkRepository:
         version.chunk_count = len(rows)
         await self.session.flush()
         return len(rows)
+
+    async def published_with_context(self, chunk_ids: Sequence[int]) -> list[Row]:
+        """返回 (切片, 版本, 制度)，只含仍处于已发布版本的切片；顺序不保证。"""
+        if not chunk_ids:
+            return []
+        result = await self.session.execute(
+            select(DocumentChunk, DocumentVersion, Document)
+            .join(DocumentVersion, DocumentVersion.id == DocumentChunk.version_id)
+            .join(Document, Document.id == DocumentChunk.document_id)
+            .where(
+                DocumentChunk.id.in_(chunk_ids),
+                DocumentVersion.status == "published",
+            )
+        )
+        return list(result.all())
+
+    async def all_for_version(self, version_id: UUID) -> list[DocumentChunk]:
+        """版本的全部切片，按顺序；供向量化使用。"""
+        chunks = await self.session.scalars(
+            select(DocumentChunk)
+            .where(DocumentChunk.version_id == version_id)
+            .order_by(DocumentChunk.ordinal)
+        )
+        return list(chunks)
 
     async def list_for_version(
         self, version_id: UUID, *, offset: int, limit: int

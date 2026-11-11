@@ -18,6 +18,7 @@ from app.models import Document, DocumentVersion, User
 from app.security.passwords import hash_password
 from app.security.tokens import decode_token
 from app.storage.keys import blocks_key, original_key
+from tests.integration.api_admin import wait_for_version
 from tests.integration.containers import compose
 from tests.integration.worker import host_storage
 
@@ -90,8 +91,11 @@ async def check_imports() -> None:
 
             done = await wait(job["id"])
             assert (done["status"], done["error_code"]) == ("succeeded", None), done
-            version = (await client.get(f"/admin/versions/{version_id}")).json()
-            assert (version["status"], version["has_pdf"]) == ("parsed", True)
+            # 默认自动批准，解析后版本转入向量化；等它离开处理中状态再继续
+            version = await wait_for_version(client, version_id)
+            settled = version["status"]
+            assert settled in ("parsed", "ready", "failed"), version
+            assert (version["parse_status"], version["has_pdf"]) == ("completed", True)
             assert version["chunk_count"] > 0 and version["page_count"] >= 1
             chunks = (
                 await client.get(
@@ -125,7 +129,7 @@ async def check_imports() -> None:
             assert duplicate.json()["code"] == "DOCUMENT_VERSION_DUPLICATE"
             listed = (await client.get("/admin/documents", params={"q": name})).json()
             assert [item["id"] for item in listed["items"]] == [job["document_id"]]
-            assert listed["items"][0]["latest_version"]["status"] == "parsed"
+            assert listed["items"][0]["latest_version"]["status"] == settled
             patched = await client.patch(
                 f"/admin/versions/{version_id}", json={"validity_status": "effective"}
             )
@@ -143,6 +147,7 @@ async def check_imports() -> None:
             )
             assert reparse.status_code == 202, reparse.text
             done = await wait(reparse.json()["id"])
+            await wait_for_version(client, version_id)
             assert done["status"] == "succeeded", done
             version = (await client.get(f"/admin/versions/{version_id}")).json()
             assert version["parse_stats"]["chunker"] == "length"

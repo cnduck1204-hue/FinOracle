@@ -184,7 +184,17 @@ async def check_worker_container(document_ids: list, storage: S3ObjectStorage) -
             .select_from(DocumentChunk)
             .where(DocumentChunk.version_id == version.id)
         )
-    assert stored.status == "parsed" and stored.parse_status == "completed"
+        index_jobs = await session.scalar(
+            select(func.count())
+            .select_from(ImportJob)
+            .where(ImportJob.version_id == version.id, ImportJob.kind == "index")
+        )
+    assert stored.parse_status == "completed"
+    # 容器默认自动批准：解析成功时版本转入向量化并创建一个索引任务；向量化结果由 indexing 检查
+    if stored.status == "parsed":
+        assert index_jobs == 0
+    else:
+        assert stored.status in ("indexing", "ready", "failed") and index_jobs == 1
     assert chunks == stored.chunk_count > 0
     assert stored.page_count and stored.page_count >= 1
     assert stored.parse_stats["chunks"] == chunks
@@ -196,7 +206,7 @@ async def check_worker_container(document_ids: list, storage: S3ObjectStorage) -
     assert blocks is not None and blocks.size > 0
     print(
         f"PASS: Worker converted the .doc through Gotenberg, saved the PDF and "
-        f"{chunks} chunks, and marked the version parsed"
+        f"{chunks} chunks, and handed the version to indexing"
     )
 
     broken, (broken_job_id,) = await create_version(document_ids, "损坏.pdf")

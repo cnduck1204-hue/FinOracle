@@ -42,9 +42,15 @@
 
 ## 文档入库（2026-11-05 新增）
 
-对应设计页 12–16（制度文档管理、导入、导入任务、解析校验、版本管理）。以下接口都需要管理员 Bearer Access Token，路径省略 `/api/v1`，响应禁止缓存，时间为 UTC。批准、发布、下架与向量化尚未提供；完整设计与后续接口见[入库方案](design/2026-11-05-document-ingestion/README.md)。
+对应设计页 12–16（制度文档管理、导入、导入任务、解析校验、版本管理）。以下接口都需要管理员 Bearer Access Token，路径省略 `/api/v1`，响应禁止缓存，时间为 UTC。完整设计见[入库方案](design/2026-11-05-document-ingestion/README.md)。
 
-**流程：** 上传后接口立即返回任务（202），由后台 worker 解析。页面轮询 `GET /admin/imports/{job_id}`（建议 2–3 秒一次）到 `status` 为 `succeeded` 或 `failed`，再进入校验页读取版本与切片。
+**流程：**
+
+1. 上传后接口立即返回解析任务（202），由后台 worker 解析。
+2. 默认配置下，完整解析的版本自动批准，worker 接着创建索引任务做向量化，完成后版本为 `ready`（待发布）。含待 OCR 图片（`parse_status` 为 `needs_ocr`）的版本停在 `parsed`，需要人工批准或重新解析。
+3. 管理员发布 `ready` 版本后，用户才能检索到它。
+
+页面轮询 `GET /admin/versions/{version_id}`（建议 2–3 秒一次），直到 `status` 不再是 `uploaded` / `parsing` / `indexing`；`latest_job` 给出当前任务的阶段、进度与错误。
 
 | 方法与路径 | 请求 | 成功响应 |
 | --- | --- | --- |
@@ -58,15 +64,19 @@
 | `GET` / `PATCH /admin/versions/{version_id}` | PATCH：上述版本信息字段，至少一项；`validity_status` 不能为 null，其余传 null 表示清除。只改信息，不影响切片 | 200 Version |
 | `GET /admin/versions/{version_id}/chunks` | `page`、`page_size`（≤100） | 200 分页 Chunk |
 | `GET /admin/versions/{version_id}/file` | `variant=original`（默认，原件）或 `pdf`（可预览的 PDF） | 200 文件流 |
-| `POST /admin/versions/{version_id}/reparse` | 可选 JSON 解析参数，不传沿用原参数；仅 `parsed` 或 `failed` 状态 | 202 Job |
-| `DELETE /admin/versions/{version_id}` | 仅 `uploaded`、`parsed`、`failed` 状态且没有进行中的任务 | 204 |
+| `POST /admin/versions/{version_id}/reparse` | 可选 JSON 解析参数，不传沿用原参数；仅 `parsed`、`ready` 或 `failed` 状态 | 202 Job |
+| `POST /admin/versions/{version_id}/approve` | 批准向量化；仅 `parsed`（未被自动批准的版本）或 `archived`（下架后重新上线） | 202 Job（`kind` 为 `index`） |
+| `POST /admin/versions/{version_id}/publish` | 仅 `ready`；同一制度原来的发布版本自动变为 `archived` | 200 Version |
+| `POST /admin/versions/{version_id}/withdraw` | 仅 `published`；下架后为 `archived`，可再批准、发布 | 200 Version |
+| `DELETE /admin/versions/{version_id}` | 仅 `uploaded`、`parsed`、`ready`、`failed` 状态且没有进行中的任务；已发布、已归档的版本保留供历史引用 | 204 |
 
 - **Job**：`id`、`version_id`、`document_id`、`document_title`、`file_name`、`kind`（目前为 `parse`）、`status`（`queued` / `running` / `succeeded` / `failed` / `cancelled`）、`stage`（`downloading` / `converting` / `parsing` / `ocr` / `chunking` / `saving`，未运行时为 null）、`progress_current` / `progress_total`（OCR 阶段为图片张数）、`attempts` / `max_attempts`、`run_after`、`error_code` / `error_message`、`created_at`、`started_at`、`finished_at`、`updated_at`。临时错误会自动重试：`status` 回到 `queued`，`error_code` 保留上次原因，`run_after` 为下次执行时间。
 - **Document**：`id`、`external_id`、`title`、`issuer`、`version_count`、`published_version` 与 `latest_version`（版本摘要：`id`、`status`、`version_note`、`validity_status`、`published_at`、`created_at`，可为 null）、时间字段。
 - **Version**：
   - 版本信息字段；
   - 文件信息：`file_name`、`file_type`、`size_bytes`、`sha256`；
-  - `status`：`uploaded` / `parsing` / `parsed` / `failed`，以及后续的 `indexing` / `ready` / `published` / `archived`；
+  - `status`：`uploaded`（排队）/ `parsing` / `parsed`（待批准）/ `indexing`（向量化中）/ `ready`（待发布）/ `published`（用户可检索）/ `archived`（已下架或被替换）/ `failed`；
+  - `index_model`、`indexed_at`：向量化所用模型与时间；`published_at`、`published_by`：发布信息；
   - `has_pdf`：为 true 时可用 `variant=pdf` 预览；
   - 解析结果：`parse_options`、`parser_version`、`parse_status`（`completed` / `needs_ocr`）、`page_count`、`chunk_count`、`parse_stats`（含实际采用的 `chunker`、`ocr_provider`）、`parse_warnings`；
   - `latest_job`：最近一次任务，同 Job，可为 null。
@@ -84,7 +94,25 @@
 - **任务失败时的 `error_code`**：
   - `DOCUMENT_INVALID`、`DOCUMENT_EMPTY`：建议提示"替换文件"；
   - `DOCUMENT_FILE_MISSING`、`PARSE_OPTIONS_INVALID`：同上，替换文件或调整参数；
-  - `JOB_ATTEMPTS_EXHAUSTED`、`STORAGE_UNAVAILABLE`、`DOCUMENT_CONVERSION_UNAVAILABLE`：可重试。
+  - `JOB_ATTEMPTS_EXHAUSTED`、`STORAGE_UNAVAILABLE`、`DOCUMENT_CONVERSION_UNAVAILABLE`、`EMBEDDING_UNAVAILABLE`、`VECTOR_STORE_UNAVAILABLE`：可重试；
+  - `EMBEDDING_AUTH_FAILED`：向量化密钥无效，需运维更正配置后重试；`EMBEDDING_REJECTED`：内容被向量化服务拒绝。
+
+## 条文检索（2026-11-05 新增）
+
+对应设计页 07 全文检索，也是问答的检索基础。需要登录（普通用户即可），只检索已发布版本，响应禁止缓存。
+
+`POST /search` 请求体：
+- `query`：必填，1–1000 字，去首尾空白；
+- `document_ids`：可选，最多 50 个制度 ID，只在这些制度中检索，对应问答首页的"选择制度范围"；
+- `top_k`：默认 8，范围 1–20。
+
+返回 `{query, results}`，`results` 按相关度从高到低。每项包含：
+- **相关度**：`chunk_id`、`score`（融合分数，只用于排序）；`dense_rank` / `dense_score`、`keyword_rank` / `keyword_score`（两路各自的名次与分数，未进入该路时为 null）。
+- `document`：`id`、`title`、`issuer`。
+- `version`：`id`、`document_number`、`version_note`、`published_date`、`effective_date`、`validity_status`、`source_url`。`validity_status` 为 `unknown` 时不能显示为现行有效。
+- **条文位置与内容**：`ordinal`、`chapter`、`section`、`article`、`heading`、`content`、`page_start` / `page_end`。
+
+没有匹配或没有已发布制度时返回空数组。检索服务暂不可用时返回 503 `SEARCH_UNAVAILABLE`；参数不合法时返回 422。
 
 ## 错误与页面处理
 

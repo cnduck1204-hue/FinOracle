@@ -21,7 +21,7 @@ def check_fresh_environment():
     config = yaml.safe_load((backend / "compose.yaml").read_text(encoding="utf-8"))
     config["name"] = project
     # 不占用宿主端口，可与正在运行的开发环境同时检查
-    for service in ("mysql", "redis", "gotenberg", "minio"):
+    for service in ("mysql", "redis", "gotenberg", "minio", "milvus"):
         config["services"][service].pop("ports", None)
     api = config["services"]["api"]
     api.pop("build", None)

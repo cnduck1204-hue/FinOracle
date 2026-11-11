@@ -16,6 +16,7 @@ from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import ParsingSettings
+from app.models.import_job import ImportJob
 from app.rag.parsing import (
     PARSER_VERSION,
     ParseResult,
@@ -28,6 +29,7 @@ from app.repositories.documents import (
     DocumentChunkRepository,
     DocumentVersionRepository,
 )
+from app.repositories.import_jobs import ImportJobRepository
 from app.schemas.document import ParseRequest
 from app.services.document_errors import (
     document_empty,
@@ -64,9 +66,13 @@ class ParseHandler:
         converter_factory: Callable[
             [ParsingSettings], ConverterProvider
         ] = create_document_converter,
+        *,
+        auto_approve: bool = False,
     ) -> None:
         self.settings = settings
         self.converter_factory = converter_factory
+        # 为 True 时，完整解析（没有待 OCR 图片）的版本直接进入向量化，无需人工批准
+        self.auto_approve = auto_approve
 
     async def run(self, context: JobContext) -> None:
         source = await self._start(context)
@@ -94,7 +100,7 @@ class ParseHandler:
                     workdir,
                 )
                 pdf_key = converted_pdf_key(source.document_id, version_id)
-                await asyncio.to_thread(
+                await context.run_owned(
                     context.storage.put_file,
                     pdf_key,
                     document,
@@ -113,7 +119,7 @@ class ParseHandler:
             context.report("saving")
             blocks = workdir / "blocks.json"
             blocks.write_bytes(_BLOCKS.dump_json(result.blocks or []))
-            await asyncio.to_thread(
+            await context.run_owned(
                 context.storage.put_file,
                 blocks_key(source.document_id, version_id),
                 blocks,
@@ -169,6 +175,16 @@ class ParseHandler:
             version.parse_warnings = result.warnings
             version.parser_version = PARSER_VERSION
             version.pdf_object_key = pdf_key
+            if self.auto_approve and result.status == "completed":
+                version.status = "indexing"
+                await ImportJobRepository(session).add(
+                    ImportJob(
+                        version_id=version.id,
+                        kind="index",
+                        run_after=context.now(),
+                        created_by=context.job.created_by,
+                    )
+                )
             context.succeed(job)
 
 
