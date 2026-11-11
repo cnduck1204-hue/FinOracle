@@ -4,6 +4,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
+from app.repositories.search import LIKE_ESCAPE, contains_pattern
 
 
 class AdminRepository:
@@ -21,18 +22,11 @@ class AdminRepository:
     ) -> tuple[list[User], int]:
         filters = []
         if q:
-            pattern = (
-                "%"
-                + q.lower()
-                .replace("\\", "\\\\")
-                .replace("%", "\\%")
-                .replace("_", "\\_")
-                + "%"
-            )
+            pattern = contains_pattern(q.lower())
             filters.append(
                 or_(
-                    User.username.like(pattern, escape="\\"),
-                    User.email.like(pattern, escape="\\"),
+                    User.username.like(pattern, escape=LIKE_ESCAPE),
+                    User.email.like(pattern, escape=LIKE_ESCAPE),
                 )
             )
         if role:

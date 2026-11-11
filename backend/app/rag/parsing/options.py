@@ -8,6 +8,9 @@
 from dataclasses import dataclass
 
 MIB = 1024 * 1024
+# 解析输出（文本清洗、切片规则、页码）变化时递增。入库版本记录产生切片的解析器版本，
+# 版本变化后已校对的切片需要重新校对
+PARSER_VERSION = "1"
 # 按名称选择 OCR 或切片器时，由系统按文档和环境自动选择
 AUTO = "auto"
 DEFAULT_MIN_OCR_CONFIDENCE = 0.5

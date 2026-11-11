@@ -6,7 +6,11 @@ import sys
 
 MODULES = (
     "containers",
+    "storage",
     "database_schema",
+    "document_schema",
+    "worker",
+    "imports",
     "registration_transactions",
     "login_transactions",
     "refresh_transactions",
@@ -17,6 +21,9 @@ MODULES = (
     "auth_flow",
     "profile",
     "admin",
+    # 依赖外部向量化服务与密钥，放在最后，凭据问题不影响其他检查
+    "indexing",
+    "search",
 )
 
 

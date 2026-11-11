@@ -18,9 +18,10 @@ from tests.integration import containers as container_smoke
 def check_fresh_environment():
     backend = Path(__file__).resolve().parents[2]
     project = f"finoracle-smoke-{uuid4().hex[:12]}"
-    config = yaml.safe_load((backend / "compose.yaml").read_text())
+    config = yaml.safe_load((backend / "compose.yaml").read_text(encoding="utf-8"))
     config["name"] = project
-    for service in ("mysql", "redis"):
+    # 不占用宿主端口，可与正在运行的开发环境同时检查
+    for service in ("mysql", "redis", "gotenberg", "minio", "milvus"):
         config["services"][service].pop("ports", None)
     api = config["services"]["api"]
     api.pop("build", None)
@@ -30,21 +31,23 @@ def check_fresh_environment():
 
     with tempfile.TemporaryDirectory(prefix="finoracle-container-test-") as directory:
         path = Path(directory) / "compose.yaml"
-        path.write_text(yaml.safe_dump(config))
+        path.write_text(yaml.safe_dump(config), encoding="utf-8")
         # Exercise the documented first-run path with fresh, unrelated credentials.
         sample = Path(directory) / ".env.example"
-        sample.write_text((backend / ".env.example").read_text())
+        sample.write_text(
+            (backend / ".env.example").read_text(encoding="utf-8"), encoding="utf-8"
+        )
         initialize_env(Path(directory))
         env_file = Path(directory) / ".env"
         admin_password = "FreshAdmin9" + secrets.token_hex(16)
-        env_text = env_file.read_text()
+        env_text = env_file.read_text(encoding="utf-8")
         for key, value in {
             "ADMIN_USERNAME": "fresh_admin",
             "ADMIN_EMAIL": "fresh_admin@example.com",
             "ADMIN_PASSWORD": admin_password,
         }.items():
             env_text = env_text.replace(f"{key}=\n", f"{key}={value}\n")
-        env_file.write_text(env_text)
+        env_file.write_text(env_text, encoding="utf-8")
         command = [
             "docker",
             "compose",

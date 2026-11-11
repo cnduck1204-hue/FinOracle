@@ -8,7 +8,7 @@ from app.api.dependencies import require_current_user
 from app.core.config import ParsingSettings, get_parsing_settings
 from app.main import app
 from app.models.user import User
-from app.rag.parsing import CHUNKER_CHOICES, OCR_CHOICES
+from app.rag.parsing import CHUNKER_CHOICES, OCR_CHOICES, providers
 from app.services import document_parsing
 from tests.parsing_samples import OLE2_HEADER, FakeConverter, make_pdf
 
@@ -32,14 +32,14 @@ def make_user(role: str) -> User:
 def client():
     client = TestClient(app, raise_server_exceptions=False)
     previous = app.dependency_overrides.copy()
-    document_parsing._ocr_provider.cache_clear()
+    document_parsing.ocr_provider.cache_clear()
     try:
         yield client
     finally:
         client.close()
         app.dependency_overrides.clear()
         app.dependency_overrides.update(previous)
-        document_parsing._ocr_provider.cache_clear()
+        document_parsing.ocr_provider.cache_clear()
 
 
 @pytest.fixture
@@ -144,7 +144,7 @@ def test_doc_upload_is_converted_with_configured_converter(admin_client, monkeyp
         created.append(settings)
         return converter
 
-    monkeypatch.setattr(document_parsing, "create_converter", fake_create_converter)
+    monkeypatch.setattr(providers, "create_converter", fake_create_converter)
     app.dependency_overrides[get_parsing_settings] = lambda: ParsingSettings(
         _env_file=None, gotenberg_url="http://gotenberg:3000"
     )

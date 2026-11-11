@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from app.core.config import ParsingSettings
 from app.core.exceptions import AppException
+from app.rag.parsing import providers
 from app.rag.parsing.options import MIB
 from app.schemas.document import ParseRequest
 from app.services import document_parsing
@@ -19,9 +20,9 @@ SETTINGS = ParsingSettings(_env_file=None)
 
 @pytest.fixture(autouse=True)
 def fresh_ocr_cache():
-    document_parsing._ocr_provider.cache_clear()
+    document_parsing.ocr_provider.cache_clear()
     yield
-    document_parsing._ocr_provider.cache_clear()
+    document_parsing.ocr_provider.cache_clear()
 
 
 def upload(name: str, data: bytes, size: int | None = None) -> UploadFile:
@@ -78,7 +79,7 @@ def test_ocr_provider_is_created_once_per_name(tmp_path, monkeypatch):
     def fake_create(name):
         created.append(name)
 
-    monkeypatch.setattr(document_parsing, "create_ocr", fake_create)
+    monkeypatch.setattr(providers, "create_ocr", fake_create)
     path = tmp_path / "notes.txt"
     path.write_text("正文", encoding="utf-8")
     for _ in range(2):

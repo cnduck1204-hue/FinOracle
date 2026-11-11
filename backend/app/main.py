@@ -10,6 +10,7 @@ from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.db.session import engine
 from app.middleware.request_context import RequestContextMiddleware
+from app.rag.indexing import close_query_embedding
 from app.services.bootstrap import initialize_admin
 
 settings = get_settings()
@@ -24,6 +25,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         try:
+            await close_query_embedding()
             await redis_client.aclose()
         finally:
             await engine.dispose()

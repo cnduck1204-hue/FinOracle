@@ -1,11 +1,24 @@
 import type {
+  DocumentChunk,
+  DocumentListQuery,
+  DocumentSummary,
+  DocumentVersion,
+  ImportJob,
+  JobListQuery,
+  Page,
+  ParseOptions,
+  PipelineInfo,
   ProfileInput,
   RegisterInput,
+  SearchInput,
+  SearchOutcome,
   SessionSnapshot,
   TokenPair,
   User,
   UserListQuery,
   UserPage,
+  VersionMetadata,
+  VersionPipeline,
 } from './types'
 import { browserLockRequest, TabLease, type LockRequest } from './tab-lease'
 
@@ -57,6 +70,49 @@ function validatePair(value: unknown): TokenPair {
   }
   return pair as TokenPair
 }
+
+function hasId(value: unknown): boolean {
+  return Boolean(value) && typeof (value as { id?: unknown }).id === 'string'
+}
+
+function validatePage<T>(
+  value: unknown,
+  isItem: (item: unknown) => boolean,
+  what: string,
+): Page<T> {
+  const page = value as Partial<Page<T>> | null
+  if (
+    !page ||
+    !Array.isArray(page.items) ||
+    !page.items.every(isItem) ||
+    !Number.isSafeInteger(page.total) ||
+    !Number.isSafeInteger(page.page) ||
+    !Number.isSafeInteger(page.page_size) ||
+    page.page_size! < 1
+  )
+    throw new ApiError(`${what}未能正确返回，请稍后重试。`, 502, 'INVALID_RESPONSE')
+  return page as Page<T>
+}
+
+function validateRecord<T>(value: unknown, what: string): T {
+  if (!hasId(value))
+    throw new ApiError(`${what}未能正确返回，请稍后重试。`, 502, 'INVALID_RESPONSE')
+  return value as T
+}
+
+const pageParams = (query: { page?: number; page_size?: number }) =>
+  new URLSearchParams({
+    page: String(query.page ?? 1),
+    page_size: String(query.page_size ?? 20),
+  })
+const versionPath = (id: string) => `/admin/versions/${encodeURIComponent(id)}`
+const documentPath = (id: string) => `/admin/documents/${encodeURIComponent(id)}`
+
+const DEFAULT_TIMEOUT_MS = 15_000
+// 文件写入存储后接口才返回，大文件需要更久；略短于 Nginx 对 admin 路径的 180 秒。
+const UPLOAD_TIMEOUT_MS = 170_000
+// 发布与下架要等向量库清理完成，读取原文要等对象存储开始返回。
+const SLOW_ADMIN_TIMEOUT_MS = 60_000
 
 export class AuthClient {
   private readonly fetcher: Fetcher
@@ -167,9 +223,13 @@ export class AuthClient {
     })
   }
 
-  private async fetchResponse(path: string, init: RequestInit = {}): Promise<Response> {
+  private async fetchResponse(
+    path: string,
+    init: RequestInit = {},
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+  ): Promise<Response> {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 15_000)
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
     try {
       return await this.fetcher(this.baseUrl + path, {
         ...init,
@@ -178,7 +238,10 @@ export class AuthClient {
         signal: controller.signal,
         headers: {
           Accept: 'application/json',
-          ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+          // FormData 的 Content-Type 由浏览器生成，带 multipart 分隔符。
+          ...(init.body && !(init.body instanceof FormData)
+            ? { 'Content-Type': 'application/json' }
+            : {}),
           ...init.headers,
         },
       })
@@ -280,25 +343,35 @@ export class AuthClient {
     }
   }
 
-  private async protectedRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const generation = this.generation
+  private async protectedResponse(
+    path: string,
+    init: RequestInit,
+    generation: number,
+    timeoutMs?: number,
+  ): Promise<Response> {
     if (!this.accessToken) await this.refresh()
     this.assertCurrent(generation)
     const usedToken = this.accessToken
-    let response = await this.fetchResponse(path, {
-      ...init,
-      headers: { ...init.headers, Authorization: `Bearer ${usedToken}` },
-    })
+    let response = await this.fetchResponse(
+      path,
+      { ...init, headers: { ...init.headers, Authorization: `Bearer ${usedToken}` } },
+      timeoutMs,
+    )
     this.assertCurrent(generation)
     if (response.status === 401) {
       // A late 401 may refer to the previous access token: reuse the new one.
       if (this.accessToken === usedToken) await this.refresh()
       this.assertCurrent(generation)
-      response = await this.fetchResponse(path, {
-        ...init,
-        headers: { ...init.headers, Authorization: `Bearer ${this.accessToken}` },
-      })
+      response = await this.fetchResponse(
+        path,
+        { ...init, headers: { ...init.headers, Authorization: `Bearer ${this.accessToken}` } },
+        timeoutMs,
+      )
     }
+    return response
+  }
+
+  private async readProtected<T>(response: Response, generation: number): Promise<T> {
     try {
       const result = await this.readResponse<T>(response)
       this.assertCurrent(generation)
@@ -313,6 +386,16 @@ export class AuthClient {
       }
       throw error
     }
+  }
+
+  private async protectedRequest<T>(
+    path: string,
+    init: RequestInit = {},
+    timeoutMs?: number,
+  ): Promise<T> {
+    const generation = this.generation
+    const response = await this.protectedResponse(path, init, generation, timeoutMs)
+    return this.readProtected<T>(response, generation)
   }
 
   async getProfile(): Promise<User> {
@@ -382,6 +465,192 @@ export class AuthClient {
     if (!isUser(result))
       throw new ApiError('用户资料未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
     return result
+  }
+
+  async search(input: SearchInput): Promise<SearchOutcome> {
+    const result = await this.protectedRequest<SearchOutcome | null>('/search', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+    if (!result || !Array.isArray(result.results))
+      throw new ApiError('检索结果未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result
+  }
+
+  async listPipelines(): Promise<PipelineInfo[]> {
+    const result = await this.protectedRequest<unknown>('/search/pipelines')
+    if (!Array.isArray(result))
+      throw new ApiError('检索方案未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result as PipelineInfo[]
+  }
+
+  async listVersionPipelines(versionId: string): Promise<VersionPipeline[]> {
+    const result = await this.protectedRequest<unknown>(`${versionPath(versionId)}/pipelines`)
+    if (!Array.isArray(result))
+      throw new ApiError('方案状态未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result as VersionPipeline[]
+  }
+
+  async buildVersionPipeline(versionId: string, name: string): Promise<ImportJob> {
+    const result = await this.protectedRequest<unknown>(
+      `${versionPath(versionId)}/pipelines/${encodeURIComponent(name)}`,
+      { method: 'POST' },
+    )
+    return validateRecord(result, '任务信息')
+  }
+
+  /** 页面图片需要鉴权，先取回 Blob 再显示。 */
+  async fetchSearchImage(chunkId: number): Promise<Blob> {
+    const generation = this.generation
+    const response = await this.protectedResponse(
+      `/search/images/${chunkId}`,
+      {},
+      generation,
+      SLOW_ADMIN_TIMEOUT_MS,
+    )
+    if (!response.ok) await this.readProtected<never>(response, generation)
+    const blob = await response.blob()
+    this.assertCurrent(generation)
+    return blob
+  }
+
+  async listDocuments(query: DocumentListQuery = {}): Promise<Page<DocumentSummary>> {
+    const params = pageParams(query)
+    if (query.q?.trim()) params.set('q', query.q.trim())
+    if (query.published !== undefined) params.set('published', String(query.published))
+    const result = await this.protectedRequest<unknown>(`/admin/documents?${params}`)
+    return validatePage(result, hasId, '制度列表')
+  }
+
+  async getDocument(id: string): Promise<DocumentSummary> {
+    return validateRecord(await this.protectedRequest<unknown>(documentPath(id)), '制度信息')
+  }
+
+  async updateDocument(
+    id: string,
+    input: { title?: string; issuer?: string | null },
+  ): Promise<DocumentSummary> {
+    const result = await this.protectedRequest<unknown>(documentPath(id), {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    })
+    return validateRecord(result, '制度信息')
+  }
+
+  async listVersions(documentId: string): Promise<DocumentVersion[]> {
+    const result = await this.protectedRequest<unknown>(`${documentPath(documentId)}/versions`)
+    if (!Array.isArray(result) || !result.every(hasId))
+      throw new ApiError('版本列表未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result as DocumentVersion[]
+  }
+
+  async getVersion(id: string): Promise<DocumentVersion> {
+    return validateRecord(await this.protectedRequest<unknown>(versionPath(id)), '版本信息')
+  }
+
+  async updateVersion(id: string, input: Partial<VersionMetadata>): Promise<DocumentVersion> {
+    const result = await this.protectedRequest<unknown>(versionPath(id), {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    })
+    return validateRecord(result, '版本信息')
+  }
+
+  async listChunks(
+    versionId: string,
+    query: { page?: number; page_size?: number } = {},
+  ): Promise<Page<DocumentChunk>> {
+    const result = await this.protectedRequest<unknown>(
+      `${versionPath(versionId)}/chunks?${pageParams(query)}`,
+    )
+    return validatePage(
+      result,
+      (item) => typeof (item as { id?: unknown } | null)?.id === 'number',
+      '切片列表',
+    )
+  }
+
+  /** 原文接口需要鉴权，不能直接作为 iframe 地址，所以先取回 Blob。 */
+  async fetchVersionFile(id: string, variant: 'original' | 'pdf'): Promise<Blob> {
+    const generation = this.generation
+    const response = await this.protectedResponse(
+      `${versionPath(id)}/file?variant=${variant}`,
+      {},
+      generation,
+      SLOW_ADMIN_TIMEOUT_MS,
+    )
+    if (!response.ok) await this.readProtected<never>(response, generation)
+    const blob = await response.blob()
+    this.assertCurrent(generation)
+    return blob
+  }
+
+  async createImport(form: FormData): Promise<ImportJob> {
+    const result = await this.protectedRequest<unknown>(
+      '/admin/imports',
+      { method: 'POST', body: form },
+      UPLOAD_TIMEOUT_MS,
+    )
+    return validateRecord(result, '导入任务')
+  }
+
+  async listJobs(query: JobListQuery = {}): Promise<Page<ImportJob>> {
+    const params = pageParams(query)
+    if (query.status) params.set('status', query.status)
+    if (query.kind) params.set('kind', query.kind)
+    if (query.document_id) params.set('document_id', query.document_id)
+    const result = await this.protectedRequest<unknown>(`/admin/imports?${params}`)
+    return validatePage(result, hasId, '任务列表')
+  }
+
+  async getJob(id: string): Promise<ImportJob> {
+    const result = await this.protectedRequest<unknown>(`/admin/imports/${encodeURIComponent(id)}`)
+    return validateRecord(result, '任务信息')
+  }
+
+  async retryJob(id: string): Promise<ImportJob> {
+    const result = await this.protectedRequest<unknown>(
+      `/admin/imports/${encodeURIComponent(id)}/retry`,
+      { method: 'POST' },
+    )
+    return validateRecord(result, '任务信息')
+  }
+
+  async reparseVersion(id: string, options?: ParseOptions): Promise<ImportJob> {
+    const result = await this.protectedRequest<unknown>(`${versionPath(id)}/reparse`, {
+      method: 'POST',
+      ...(options ? { body: JSON.stringify(options) } : {}),
+    })
+    return validateRecord(result, '任务信息')
+  }
+
+  async approveVersion(id: string): Promise<ImportJob> {
+    const result = await this.protectedRequest<unknown>(`${versionPath(id)}/approve`, {
+      method: 'POST',
+    })
+    return validateRecord(result, '任务信息')
+  }
+
+  async publishVersion(id: string): Promise<DocumentVersion> {
+    const result = await this.protectedRequest<unknown>(
+      `${versionPath(id)}/publish`,
+      { method: 'POST' },
+      SLOW_ADMIN_TIMEOUT_MS,
+    )
+    return validateRecord(result, '版本信息')
+  }
+
+  async withdrawVersion(id: string): Promise<DocumentVersion> {
+    const result = await this.protectedRequest<unknown>(
+      `${versionPath(id)}/withdraw`,
+      { method: 'POST' },
+      SLOW_ADMIN_TIMEOUT_MS,
+    )
+    return validateRecord(result, '版本信息')
+  }
+
+  async deleteVersion(id: string): Promise<void> {
+    await this.protectedRequest<void>(versionPath(id), { method: 'DELETE' }, SLOW_ADMIN_TIMEOUT_MS)
   }
 
   async logout(): Promise<void> {

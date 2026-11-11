@@ -16,7 +16,19 @@ _ENV_SOURCE = SettingsConfigDict(
 )
 
 
-class Settings(BaseSettings):
+class DatabaseSettings(BaseSettings):
+    """MySQL 连接配置。worker 只加载这部分与其他所需配置，不接触 JWT 等认证密钥。"""
+
+    mysql_host: str = "127.0.0.1"
+    mysql_port: int = 3306
+    mysql_database: str = "finoracle"
+    mysql_user: str = "finoracle"
+    mysql_password: SecretStr
+
+    model_config = _ENV_SOURCE
+
+
+class Settings(DatabaseSettings):
     """FinOracle 应用配置"""
 
     app_name: str = "FinOracle API"
@@ -27,12 +39,6 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
 
     openapi_enabled: bool = True
-
-    mysql_host: str = "127.0.0.1"
-    mysql_port: int = 3306
-    mysql_database: str = "finoracle"
-    mysql_user: str = "finoracle"
-    mysql_password: SecretStr
 
     redis_host: str = "127.0.0.1"
     redis_port: int = 6379
@@ -124,6 +130,126 @@ class ParsingSettings(BaseSettings):
     model_config = _ENV_SOURCE
 
 
+class StorageSettings(BaseSettings):
+    """对象存储配置：通过 S3 API 访问，开发环境由 Compose 运行 MinIO。
+
+    单独成类，worker 与导入脚本只需这部分配置即可读写原件。
+    """
+
+    # API 容器内为 http://minio:9000，本机 uvicorn 或脚本为 http://127.0.0.1:9000
+    s3_endpoint_url: str = "http://127.0.0.1:9000"
+    s3_region: str = "us-east-1"
+    s3_access_key: str = Field(default="finoracle", min_length=3)
+    s3_secret_key: SecretStr = Field(min_length=8, repr=False)
+    s3_bucket: str = Field(
+        default="finoracle-documents",
+        # S3 桶名规则：3–63 位小写字母、数字、连字符，首尾为字母或数字
+        pattern=r"^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$",
+    )
+
+    @field_validator("s3_endpoint_url")
+    @classmethod
+    def validate_endpoint(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("S3_ENDPOINT_URL 必须以 http:// 或 https:// 开头")
+        return value
+
+    model_config = _ENV_SOURCE
+
+
+class WorkerSettings(DatabaseSettings):
+    """worker 进程配置：数据库连接与任务调度参数。"""
+
+    log_level: str = "INFO"
+    # 没有任务时的轮询间隔
+    worker_poll_seconds: float = Field(default=2, gt=0)
+    # 任务租约；worker 每 5 秒续租一次，进程退出后租约到期，任务由其他 worker 接手
+    job_lease_seconds: int = Field(default=60, ge=20)
+    # 解析完成且没有待 OCR 图片的版本自动批准并向量化；关闭后须管理员调用批准接口
+    auto_approve_parsed: bool = True
+
+
+_EMBEDDING_DIMENSIONS = frozenset({64, 128, 256, 512, 768, 1024, 1536, 2048})
+
+
+class EmbeddingSettings(BaseSettings):
+    """向量化服务：DashScope 的 OpenAI 兼容接口。离线入库与在线查询必须使用同一模型和维度。"""
+
+    # 北京地域；国际站为 https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+    embedding_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    embedding_model: str = Field(default="text-embedding-v4", pattern=r"^[\w.-]+$")
+    # text-embedding-v4 支持 64、128、256、512、768、1024、1536、2048
+    embedding_dimension: int = 1024
+    # text-embedding-v4 每次最多 10 条，超过返回 400
+    embedding_batch_size: int = Field(default=10, ge=1, le=10)
+    embedding_timeout_seconds: float = Field(default=30, gt=0)
+    dashscope_api_key: SecretStr | None = Field(default=None, repr=False)
+
+    @field_validator("embedding_base_url")
+    @classmethod
+    def validate_base_url(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("EMBEDDING_BASE_URL 必须以 http:// 或 https:// 开头")
+        return value
+
+    @field_validator("embedding_dimension")
+    @classmethod
+    def validate_dimension(cls, value: int) -> int:
+        if value not in _EMBEDDING_DIMENSIONS:
+            raise ValueError(
+                f"EMBEDDING_DIMENSION 须为 {sorted(_EMBEDDING_DIMENSIONS)} 之一"
+            )
+        return value
+
+    @field_validator("dashscope_api_key")
+    @classmethod
+    def blank_key_as_none(cls, value: SecretStr | None) -> SecretStr | None:
+        return value if value and value.get_secret_value().strip() else None
+
+    model_config = _ENV_SOURCE
+
+
+class VectorStoreSettings(BaseSettings):
+    """Milvus 向量库。集合名由前缀、模型与维度组成，换模型时写入新集合。"""
+
+    milvus_uri: str = "http://127.0.0.1:19530"
+    milvus_token: SecretStr | None = Field(default=None, repr=False)
+    milvus_collection_prefix: str = Field(
+        default="finoracle_chunks", pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,100}$"
+    )
+    milvus_timeout_seconds: float = Field(default=30, gt=0)
+
+    @field_validator("milvus_token")
+    @classmethod
+    def blank_token_as_none(cls, value: SecretStr | None) -> SecretStr | None:
+        return value if value and value.get_secret_value().strip() else None
+
+    model_config = _ENV_SOURCE
+
+
+class VisualSettings(BaseSettings):
+    """页面视觉通道。模型运行在独立的编码服务中，未配置地址时该方案不可用。"""
+
+    visual_service_url: str | None = None
+    visual_model: str = "vidore/colSmol-500M"
+    # ColPali 系列模型的后期交互向量维度
+    visual_dimension: int = Field(default=128, ge=1)
+    visual_batch_pages: int = Field(default=4, ge=1)
+    visual_render_dpi: int = Field(default=150, ge=36, le=600)
+    # CPU 上单页约十几秒，一批要留足时间
+    visual_timeout_seconds: float = Field(default=300, gt=0)
+
+    @field_validator("visual_service_url")
+    @classmethod
+    def normalize_url(cls, value: str | None) -> str | None:
+        value = (value or "").strip().rstrip("/")
+        return value or None
+
+    model_config = _ENV_SOURCE
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
@@ -132,3 +258,23 @@ def get_settings() -> Settings:
 @lru_cache
 def get_parsing_settings() -> ParsingSettings:
     return ParsingSettings()
+
+
+@lru_cache
+def get_storage_settings() -> StorageSettings:
+    return StorageSettings()
+
+
+@lru_cache
+def get_embedding_settings() -> EmbeddingSettings:
+    return EmbeddingSettings()
+
+
+@lru_cache
+def get_vector_store_settings() -> VectorStoreSettings:
+    return VectorStoreSettings()
+
+
+@lru_cache
+def get_visual_settings() -> VisualSettings:
+    return VisualSettings()
