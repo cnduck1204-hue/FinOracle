@@ -2,12 +2,16 @@ import os
 
 from app.core.config import (
     DatabaseSettings,
+    EmbeddingSettings,
     ParsingSettings,
     Settings,
     StorageSettings,
+    VectorStoreSettings,
     WorkerSettings,
 )
 
+# 依赖库（如 pymilvus）导入时不得把本机 backend/.env 写入环境变量
+os.environ["PYTHON_DOTENV_DISABLED"] = "1"
 os.environ.setdefault("MYSQL_PASSWORD", "test-password")
 os.environ.setdefault(
     "JWT_SECRET_KEY",
@@ -21,5 +25,7 @@ for settings_class in (
     ParsingSettings,
     StorageSettings,
     WorkerSettings,
+    EmbeddingSettings,
+    VectorStoreSettings,
 ):
     settings_class.model_config["env_file"] = None

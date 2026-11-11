@@ -1,5 +1,7 @@
 import asyncio
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -12,22 +14,26 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
 from app.api.dependencies import require_current_user
+from app.api.v1.endpoints.search import get_retriever
 from app.core.config import ParsingSettings
 from app.db.base import Base
 from app.db.engine import create_session_factory
 from app.db.session import get_db
 from app.main import app
 from app.models import Document, DocumentChunk, DocumentVersion, ImportJob, User
+from app.rag.indexing import get_vector_store
+from app.rag.retrieval import HybridRetriever
 from app.repositories.documents import DocumentVersionRepository
-from app.services import document_imports
+from app.services import document_imports, document_publishing
 from app.services.document_imports import clean_file_name
 from app.services.document_library import content_disposition, media_type_for
 from app.storage import get_storage
 from app.storage.keys import blocks_key, original_key
+from app.worker.index import IndexHandler
 from app.worker.parse import ParseHandler
 from app.worker.runtime import Worker
 from tests.parsing_samples import make_pdf
-from tests.worker_support import MemoryStorage
+from tests.worker_support import FakeEmbedding, MemoryStorage, MemoryVectorStore
 
 API = "/api/v1/admin"
 REGULATION = (
@@ -77,6 +83,10 @@ def api(tmp_path):
     event.listen(engine.sync_engine, "connect", enable_foreign_keys)
     sessions = create_session_factory(engine)
     storage = MemoryStorage()
+    vectors = MemoryVectorStore()
+    embedding = FakeEmbedding()
+    # auto_approve 控制测试 worker 是否在解析完成后自动创建索引任务
+    options = SimpleNamespace(auto_approve=False)
 
     async def database():
         async with sessions() as session:
@@ -88,6 +98,7 @@ def api(tmp_path):
     previous = app.dependency_overrides.copy()
     app.dependency_overrides[get_db] = database
     app.dependency_overrides[get_storage] = lambda: storage
+    app.dependency_overrides[get_vector_store] = lambda: vectors
     app.dependency_overrides[require_current_user] = identity
     client = TestClient(app, raise_server_exceptions=False)
 
@@ -100,7 +111,13 @@ def api(tmp_path):
             worker = Worker(
                 create_session_factory(worker_engine),
                 storage,
-                [ParseHandler(ParsingSettings(_env_file=None))],
+                [
+                    ParseHandler(
+                        ParsingSettings(_env_file=None),
+                        auto_approve=options.auto_approve,
+                    ),
+                    IndexHandler(embedding, vectors),
+                ],
                 heartbeat_seconds=0.05,
             )
             try:
@@ -116,7 +133,14 @@ def api(tmp_path):
 
     try:
         yield SimpleNamespace(
-            client=client, storage=storage, admin=admin, run_worker=run_worker, db=db
+            client=client,
+            storage=storage,
+            vectors=vectors,
+            embedding=embedding,
+            options=options,
+            admin=admin,
+            run_worker=run_worker,
+            db=db,
         )
     finally:
         client.close()
@@ -152,6 +176,9 @@ ENDPOINTS = [
     ("GET", f"/versions/{uuid4()}/chunks"),
     ("GET", f"/versions/{uuid4()}/file"),
     ("POST", f"/versions/{uuid4()}/reparse"),
+    ("POST", f"/versions/{uuid4()}/approve"),
+    ("POST", f"/versions/{uuid4()}/publish"),
+    ("POST", f"/versions/{uuid4()}/withdraw"),
     ("DELETE", f"/versions/{uuid4()}"),
 ]
 
@@ -671,3 +698,225 @@ def test_openapi_describes_the_import_form():
     form = schema["components"]["schemas"]["ImportForm"]
     assert form["properties"]["file"]["format"] == "binary"
     assert json.dumps(form["required"]) == '["file"]'
+
+
+def ready_version(api, **kwargs) -> dict:
+    """导入并自动批准，返回进入 ready 的版本的导入任务。"""
+    api.options.auto_approve = True
+    job = imported(api, **kwargs)
+    api.run_worker()
+    version = api.client.get(f"{API}/versions/{job['version_id']}").json()
+    assert version["status"] == "ready", version
+    return job
+
+
+def test_auto_approved_versions_are_indexed_and_wait_for_publication(api):
+    job = ready_version(api)
+    version = api.client.get(f"{API}/versions/{job['version_id']}").json()
+    assert version["index_model"] == "fake-embedding:4"
+    assert version["indexed_at"] is not None
+    assert version["latest_job"]["kind"] == "index"
+    assert version["latest_job"]["status"] == "succeeded"
+    stored = api.vectors.by_version(UUID(job["version_id"]))
+    assert len(stored) == version["chunk_count"] == 3
+    assert stored[0].text.startswith("金融机构管理办法 第一章 总则 第一条\n")
+    # 每批不超过向量化服务的上限
+    assert [len(batch) for batch in api.embedding.batches] == [2, 1]
+    jobs = api.client.get(
+        f"{API}/imports", params={"version_id": job["version_id"]}
+    ).json()
+    assert [item["kind"] for item in jobs["items"]] == ["index", "parse"]
+
+
+def test_manual_approval_indexes_a_parsed_version(api):
+    job = imported(api)
+    api.run_worker()
+    url = f"{API}/versions/{job['version_id']}"
+    assert api.client.get(url).json()["status"] == "parsed"
+
+    approved = api.client.post(f"{url}/approve")
+    assert approved.status_code == 202
+    assert (approved.json()["kind"], approved.json()["status"]) == ("index", "queued")
+    assert api.client.get(url).json()["status"] == "indexing"
+    busy = api.client.post(f"{url}/approve")
+    assert (busy.status_code, busy.json()["code"]) == (409, "IMPORT_IN_PROGRESS")
+
+    api.run_worker()
+    assert api.client.get(url).json()["status"] == "ready"
+    again = api.client.post(f"{url}/approve")
+    assert (again.status_code, again.json()["code"]) == (409, "VERSION_STATE_CONFLICT")
+
+
+def test_publishing_replaces_the_current_version(api):
+    first = ready_version(api)
+    first_url = f"{API}/versions/{first['version_id']}"
+    early = api.client.post(f"{API}/versions/{uuid4()}/publish")
+    assert early.json()["code"] == "VERSION_NOT_FOUND"
+
+    published = api.client.post(f"{first_url}/publish")
+    assert published.status_code == 200
+    body = published.json()
+    assert body["status"] == "published"
+    assert body["published_by"] == str(api.admin.id)
+    assert body["published_at"] is not None
+
+    second = ready_version(
+        api, document_id=first["document_id"], title=None, content=REGULATION + b"\n"
+    )
+    assert (
+        api.client.post(f"{API}/versions/{second['version_id']}/publish").json()[
+            "status"
+        ]
+        == "published"
+    )
+    assert api.client.get(first_url).json()["status"] == "archived"
+    # 被替换的版本不再参与检索，其向量已清理；新版本的向量保留
+    assert api.vectors.by_version(UUID(first["version_id"])) == []
+    assert len(api.vectors.by_version(UUID(second["version_id"]))) == 3
+
+    document = api.client.get(f"{API}/documents/{first['document_id']}").json()
+    assert document["published_version"]["id"] == second["version_id"]
+    again = api.client.post(f"{first_url}/publish")
+    assert (again.status_code, again.json()["code"]) == (409, "VERSION_STATE_CONFLICT")
+
+
+def test_only_ready_versions_can_be_published(api):
+    job = imported(api)
+    response = api.client.post(f"{API}/versions/{job['version_id']}/publish")
+    assert (response.status_code, response.json()["code"]) == (
+        409,
+        "IMPORT_IN_PROGRESS",
+    )
+    api.run_worker()
+    response = api.client.post(f"{API}/versions/{job['version_id']}/publish")
+    assert (response.status_code, response.json()["code"]) == (
+        409,
+        "VERSION_STATE_CONFLICT",
+    )
+
+
+def test_withdrawn_versions_can_be_approved_and_published_again(api):
+    job = ready_version(api)
+    url = f"{API}/versions/{job['version_id']}"
+    not_published = api.client.post(f"{url}/withdraw")
+    assert not_published.json()["code"] == "VERSION_STATE_CONFLICT"
+    api.client.post(f"{url}/publish")
+
+    withdrawn = api.client.post(f"{url}/withdraw")
+    assert withdrawn.status_code == 200
+    assert withdrawn.json()["status"] == "archived"
+    assert api.vectors.by_version(UUID(job["version_id"])) == []
+    document = api.client.get(f"{API}/documents/{job['document_id']}").json()
+    assert document["published_version"] is None
+    # 归档版本保留切片，不能删除
+    assert api.client.delete(url).json()["code"] == "VERSION_STATE_CONFLICT"
+
+    assert api.client.post(f"{url}/approve").status_code == 202
+    api.run_worker()
+    assert len(api.vectors.by_version(UUID(job["version_id"]))) == 3
+    assert api.client.post(f"{url}/publish").json()["status"] == "published"
+
+
+@pytest.mark.parametrize("action", ["withdraw", "replace"])
+def test_delayed_archive_cleanup_preserves_republished_vectors(
+    api, monkeypatch, action
+):
+    first = ready_version(api)
+    version_id = UUID(first["version_id"])
+    url = f"{API}/versions/{version_id}"
+    assert api.client.post(f"{url}/publish").status_code == 200
+    if action == "replace":
+        second = ready_version(
+            api,
+            document_id=first["document_id"],
+            title=None,
+            content=REGULATION + b"\n",
+        )
+        action_url = f"{API}/versions/{second['version_id']}/publish"
+    else:
+        action_url = f"{url}/withdraw"
+
+    entered = threading.Event()
+    release = threading.Event()
+    cleanup = document_publishing._delete_archived_vectors
+
+    async def delayed_cleanup(identifier, session, store):
+        if identifier == version_id and not entered.is_set():
+            entered.set()
+            assert await asyncio.to_thread(release.wait, 5)
+        await cleanup(identifier, session, store)
+
+    monkeypatch.setattr(
+        document_publishing, "_delete_archived_vectors", delayed_cleanup
+    )
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(api.client.post, action_url)
+        try:
+            assert entered.wait(5)
+            assert api.client.post(f"{url}/approve").status_code == 202
+            api.run_worker()
+            assert api.client.post(f"{url}/publish").status_code == 200
+        finally:
+            release.set()
+        assert pending.result(timeout=5).status_code == 200
+    assert api.client.get(url).json()["status"] == "published"
+    assert len(api.vectors.by_version(version_id)) == 3
+    api.client.app.dependency_overrides[get_retriever] = lambda: HybridRetriever(
+        api.embedding, api.vectors
+    )
+    result = api.client.post(
+        "/api/v1/search",
+        json={"query": "金融机构", "document_ids": [first["document_id"]]},
+    )
+    assert result.status_code == 200 and len(result.json()["results"]) == 3
+
+
+def test_ready_versions_can_be_reparsed_or_deleted_with_their_vectors(api):
+    job = ready_version(api)
+    url = f"{API}/versions/{job['version_id']}"
+    assert api.client.post(f"{url}/reparse").status_code == 202
+    api.run_worker()
+    assert api.client.get(url).json()["status"] == "ready"
+
+    assert api.client.delete(url).status_code == 204
+    assert api.vectors.records == {}
+    assert api.storage.objects == {}
+
+
+def test_vector_store_outage_does_not_block_withdrawal_or_deletion(api):
+    job = ready_version(api)
+    url = f"{API}/versions/{job['version_id']}"
+    api.client.post(f"{url}/publish")
+    api.vectors.unavailable = True
+    assert api.client.post(f"{url}/withdraw").json()["status"] == "archived"
+    api.vectors.unavailable = False
+    # 清理失败只留下孤儿向量；检索只读已发布版本，不受影响
+    assert len(api.vectors.by_version(UUID(job["version_id"]))) == 3
+
+
+def test_failed_indexing_can_be_retried(api):
+    api.options.auto_approve = True
+    api.embedding.fail_with = ValueError("embedding bug")
+    job = imported(api)
+    for _ in range(3):
+        api.run_worker()
+        with api.db() as session:
+            for record in session.scalars(select(ImportJob)):
+                record.run_after = datetime(2000, 1, 1)
+            session.commit()
+    jobs = api.client.get(
+        f"{API}/imports", params={"version_id": job["version_id"], "kind": "index"}
+    ).json()["items"]
+    assert (jobs[0]["status"], jobs[0]["error_code"]) == (
+        "failed",
+        "JOB_INTERNAL_ERROR",
+    )
+    url = f"{API}/versions/{job['version_id']}"
+    assert api.client.get(url).json()["status"] == "failed"
+
+    api.embedding.fail_with = None
+    retried = api.client.post(f"{API}/imports/{jobs[0]['id']}/retry")
+    assert retried.status_code == 202
+    assert api.client.get(url).json()["status"] == "indexing"
+    api.run_worker()
+    assert api.client.get(url).json()["status"] == "ready"

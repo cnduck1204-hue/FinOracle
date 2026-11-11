@@ -144,6 +144,7 @@ class ImportJobRepository:
         job_id: UUID,
         *,
         worker_id: str,
+        attempt: int,
         now: datetime,
         lease_seconds: float,
         stage: str | None,
@@ -157,6 +158,7 @@ class ImportJobRepository:
                 ImportJob.id == job_id,
                 ImportJob.status == "running",
                 ImportJob.locked_by == worker_id,
+                ImportJob.attempts == attempt,
             )
             .values(
                 lease_expires_at=now + timedelta(seconds=lease_seconds),

@@ -20,6 +20,7 @@ from app.db.base import utc_now
 from app.models.document import Document, DocumentVersion
 from app.models.import_job import ImportJob
 from app.models.user import User
+from app.rag.indexing import VectorStore
 from app.rag.parsing import SUPPORTED_TYPES, ParseOptions
 from app.rag.parsing.errors import file_too_large, invalid_document, unsupported_type
 from app.rag.parsing.options import MIB
@@ -44,9 +45,11 @@ logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_BYTES = ParseOptions().max_file_bytes
 _FILE_NAME_LIMIT = 255
-# 解析结束或失败、且没有进行中任务的版本可以删除或重新解析；已发布与已归档的版本保留
-_REPARSABLE = frozenset({"parsed", "failed"})
-_DELETABLE = frozenset({"uploaded", "parsed", "failed"})
+# 没有进行中任务的草稿版本可以重新解析或删除；已发布与已归档的版本供历史引用回溯，保留
+_REPARSABLE = frozenset({"parsed", "failed", "ready"})
+_DELETABLE = frozenset({"uploaded", "parsed", "failed", "ready"})
+# 可批准向量化的状态：解析完成，或下架后需要重新上线
+_APPROVABLE = frozenset({"parsed", "archived"})
 
 
 def clean_file_name(name: str | None) -> str:
@@ -163,7 +166,7 @@ async def retry_job(job_id: UUID, session: AsyncSession) -> JobResponse:
         job.error_message = None
         job.started_at = None
         job.finished_at = None
-        version.status = "uploaded"
+        version.status = "uploaded" if job.kind == "parse" else "indexing"
         await session.flush()
         return job_response(await jobs.get_with_context(job_id))
 
@@ -176,9 +179,9 @@ async def reparse_version(
 ) -> JobResponse:
     """用新的（或原来的）解析参数创建解析任务；完成后替换原有切片。"""
     async with session.begin():
-        version = await _lock_idle_version(session, version_id)
+        version = await lock_idle_version(session, version_id)
         if version.status not in _REPARSABLE:
-            raise version_state_conflict("只能重新解析已解析或解析失败的版本")
+            raise version_state_conflict("只能重新解析尚未发布的版本")
         if options is not None:
             version.parse_options = options.stored()
         version.status = "uploaded"
@@ -190,12 +193,36 @@ async def reparse_version(
         return job_response(await jobs.get_with_context(job.id))
 
 
-async def delete_version(
-    version_id: UUID, session: AsyncSession, storage: ObjectStorage
-) -> None:
-    """删除未发布的版本及其切片、任务和对象；已发布或已归档的版本供历史引用回溯，不能删除。"""
+async def approve_version(
+    version_id: UUID, user: User, session: AsyncSession
+) -> JobResponse:
+    """批准向量化：创建索引任务，完成后版本进入 ready（待发布）。
+
+    默认配置下 worker 自动批准完整解析的版本；需要人工批准的是含待 OCR 图片的版本、
+    关闭自动批准时的版本，以及下架后要重新上线的版本。
+    """
     async with session.begin():
-        version = await _lock_idle_version(session, version_id)
+        version = await lock_idle_version(session, version_id)
+        if version.status not in _APPROVABLE:
+            raise version_state_conflict("只能批准已解析或已下架的版本")
+        version.status = "indexing"
+        job = ImportJob(
+            version_id=version_id, kind="index", run_after=utc_now(), created_by=user.id
+        )
+        jobs = ImportJobRepository(session)
+        await jobs.add(job)
+        return job_response(await jobs.get_with_context(job.id))
+
+
+async def delete_version(
+    version_id: UUID,
+    session: AsyncSession,
+    storage: ObjectStorage,
+    store: VectorStore,
+) -> None:
+    """删除未发布的版本及其切片、任务、对象与向量；已发布或已归档的版本供历史引用回溯，不能删除。"""
+    async with session.begin():
+        version = await lock_idle_version(session, version_id)
         if version.status not in _DELETABLE:
             raise version_state_conflict("已发布或已归档的版本不能删除")
         keys = [
@@ -205,15 +232,22 @@ async def delete_version(
         ]
         # 切片与任务由外键级联删除
         await session.delete(version)
-    # 数据库已提交后再删对象；失败只留下孤儿对象，不影响数据一致
+    # 数据库已提交后再删对象与向量；失败只留下孤儿数据，检索只读已发布版本，不受影响
     for key in keys:
         if key is not None:
             await run_in_threadpool(_delete_quietly, storage, key)
+    await run_in_threadpool(delete_vectors_quietly, store, version_id)
 
 
-async def _lock_idle_version(
-    session: AsyncSession, version_id: UUID
-) -> DocumentVersion:
+def delete_vectors_quietly(store: VectorStore, version_id: UUID) -> None:
+    try:
+        store.delete_by_version(version_id)
+    except AppException:
+        logger.warning("vector_cleanup_failed: %s", version_id)
+
+
+async def lock_idle_version(session: AsyncSession, version_id: UUID) -> DocumentVersion:
+    """锁定版本并确认没有进行中的任务。"""
     version = await DocumentVersionRepository(session).get(version_id, for_update=True)
     if version is None:
         raise version_not_found()

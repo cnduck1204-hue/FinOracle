@@ -1,4 +1,6 @@
+import asyncio
 import json
+import threading
 
 import pytest
 from sqlalchemy import select
@@ -7,6 +9,7 @@ from app.core.config import ParsingSettings
 from app.models import DocumentChunk, DocumentVersion, ImportJob
 from app.rag.parsing import PARSER_VERSION
 from app.storage.keys import blocks_key, converted_pdf_key
+from app.worker import parse as parse_worker
 from app.worker.parse import ParseHandler
 from app.worker.runtime import ClaimedJob, JobContext, LeaseLost, Worker
 from tests.parsing_samples import OLE2_HEADER, FakeConverter
@@ -219,5 +222,56 @@ def test_parse_stops_when_the_version_was_deleted(tmp_path):
             await handler.run(JobContext(claimed, make_worker(env, handler)))
         assert list(env.storage.objects) == [ids.key]
         assert await stored_chunks(env, ids.version_id) == []
+
+    run_with_database(tmp_path, scenario)
+
+
+@pytest.mark.parametrize("file_type", ["txt", "doc"])
+def test_old_parse_attempt_cannot_overwrite_objects_after_takeover(
+    tmp_path, monkeypatch, file_type
+):
+    async def scenario(env):
+        content = OLE2_HEADER + b"word" if file_type == "doc" else REGULATION
+        ids = await seed(env, file_name=f"办法.{file_type}", content=content)
+        converter = FakeConverter([["第一条 规范经营行为。", "第二条 适用范围。"]])
+        handler = ParseHandler(SETTINGS, converter_factory=lambda settings: converter)
+        old = make_worker(env, handler)
+        old.heartbeat_seconds = 5
+        new = Worker(
+            env.sessions,
+            env.storage,
+            [handler],
+            worker_id="worker-2",
+            clock=env.clock,
+        )
+        entered = threading.Event()
+        release = threading.Event()
+        download = parse_worker._download
+        put_file = env.storage.put_file
+        writes = []
+
+        def paused_download(*args):
+            download(*args)
+            if not entered.is_set():
+                entered.set()
+                assert release.wait(5)
+
+        def tracked_put_file(key, path, **kwargs):
+            writes.append(key)
+            put_file(key, path, **kwargs)
+
+        monkeypatch.setattr(parse_worker, "_download", paused_download)
+        monkeypatch.setattr(env.storage, "put_file", tracked_put_file)
+        pending = asyncio.create_task(old.run_once())
+        try:
+            assert await asyncio.to_thread(entered.wait, 5)
+            env.clock.advance(61)
+            assert await new.run_once()
+            saved = list(writes)
+        finally:
+            release.set()
+            await pending
+        assert saved and writes == saved
+        assert (await load(env, DocumentVersion, ids.version_id)).status == "parsed"
 
     run_with_database(tmp_path, scenario)
