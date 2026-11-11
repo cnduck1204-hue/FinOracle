@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 from app.rag.parsing.chunkers import create_chunker
@@ -35,6 +36,14 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_TYPES = PARSER_TYPES | CONVERTIBLE_TYPES
 
+# 进度回调：阶段名、当前进度、总量（未知为 None）。阶段依次为 converting（仅需转换的格式）、
+# parsing、ocr（逐张图片报告）、chunking。回调在解析线程中执行，应快速返回
+ProgressCallback = Callable[[str, int, int | None], None]
+
+
+def _ignore_progress(stage: str, current: int, total: int | None) -> None:
+    pass
+
 
 def parse_file(
     path: Path,
@@ -43,8 +52,10 @@ def parse_file(
     ocr: OCRProvider | None = None,
     chunker: str = AUTO,
     options: ParseOptions | None = None,
+    progress: ProgressCallback | None = None,
 ) -> ParseResult:
     options = options or ParseOptions()
+    report = progress or _ignore_progress
     file_type = path.suffix.lower().lstrip(".")
     if file_type not in SUPPORTED_TYPES:
         raise unsupported_type(file_type)
@@ -54,10 +65,13 @@ def parse_file(
     with tempfile.TemporaryDirectory() as workdir:
         source = path
         if converted:
-            source = _to_pdf(path, file_type, converter, Path(workdir))
+            report("converting", 0, None)
+            source = convert_to_pdf(path, converter, Path(workdir))
+        report("parsing", 0, None)
         parser = get_parser(source.suffix.lower().lstrip("."))
         document = parser.parse(source, options)
-    ocr_blocks, pending, ocr_warnings = _run_ocr(document.ocr_targets, ocr)
+    ocr_blocks, pending, ocr_warnings = _run_ocr(document.ocr_targets, ocr, report)
+    report("chunking", 0, None)
     blocks, removed = merge_blocks(document.blocks, ocr_blocks)
     splitter = create_chunker(chunker, blocks, options)
     chunks = splitter.split(blocks)
@@ -86,9 +100,13 @@ def parse_file(
     )
 
 
-def _to_pdf(
-    path: Path, file_type: str, converter: ConverterProvider | None, workdir: Path
+def convert_to_pdf(
+    path: Path, converter: ConverterProvider | None, workdir: Path
 ) -> Path:
+    """把 .doc / .rtf / .odt 转换为 workdir 中的 PDF；先核对文件头，内容与扩展名不符时拒绝。"""
+    file_type = path.suffix.lower().lstrip(".")
+    if file_type not in CONVERTIBLE_TYPES:
+        raise unsupported_type(file_type)
     check_signature(path, file_type)
     if converter is None:
         raise conversion_unavailable("未配置格式转换器，无法解析该格式")
@@ -105,7 +123,7 @@ def _checked_size(path: Path, options: ParseOptions) -> int:
 
 
 def _run_ocr(
-    targets: list[OcrTarget], ocr: OCRProvider | None
+    targets: list[OcrTarget], ocr: OCRProvider | None, report: ProgressCallback
 ) -> tuple[list[TextBlock], int, list[str]]:
     """识别全部图片，返回 OCR 文本块、仍待识别的图片数和警告。"""
     if not targets:
@@ -116,7 +134,8 @@ def _run_ocr(
     blocks: list[TextBlock] = []
     failed: list[OcrTarget] = []
     blank: list[OcrTarget] = []
-    for target in targets:
+    for index, target in enumerate(targets):
+        report("ocr", index, len(targets))
         try:
             lines = ocr.recognize(target.image)
         except Exception:
@@ -138,6 +157,7 @@ def _run_ocr(
         elif target.reason in WHOLE_PAGE_OCR_REASONS:
             blank.append(target)
 
+    report("ocr", len(targets), len(targets))
     warnings = []
     if failed:
         warnings.append(f"{_describe(failed)}OCR 失败")

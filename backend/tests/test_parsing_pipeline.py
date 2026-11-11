@@ -3,7 +3,7 @@ import hashlib
 import pytest
 
 from app.core.exceptions import AppException
-from app.rag.parsing import ParseOptions, parse_file
+from app.rag.parsing import ParseOptions, convert_to_pdf, parse_file
 from app.rag.parsing.ocr import OcrLine, OCRProvider
 from tests.parsing_samples import OLE2_HEADER, FakeConverter, make_pdf, text_image
 
@@ -157,3 +157,36 @@ def test_pipeline_honours_chunker_choice(tmp_path):
     forced = parse_file(path, chunker="length")
     assert forced.chunker == "length"
     assert forced.chunks[0].heading == "总则"
+
+
+def test_pipeline_reports_progress_by_stage(scanned_pdf, tmp_path):
+    events = []
+    ocr = FakeOcr(["第二条 内容。"], ["第三条 内容。"])
+
+    parse_file(scanned_pdf, ocr=ocr, progress=lambda *event: events.append(event))
+
+    assert events == [
+        ("parsing", 0, None),
+        ("ocr", 0, 2),
+        ("ocr", 1, 2),
+        ("ocr", 2, 2),
+        ("chunking", 0, None),
+    ]
+
+    source = tmp_path / "legacy.doc"
+    source.write_bytes(OLE2_HEADER + b"legacy word")
+    events.clear()
+    parse_file(
+        source,
+        converter=FakeConverter([["第一条 内容。"]]),
+        progress=lambda *event: events.append(event),
+    )
+    assert [stage for stage, *_ in events] == ["converting", "parsing", "chunking"]
+
+
+def test_convert_to_pdf_only_accepts_convertible_formats(tmp_path):
+    source = tmp_path / "rules.docx"
+    source.write_bytes(b"PK\x03\x04")
+    with pytest.raises(AppException) as exc:
+        convert_to_pdf(source, FakeConverter([["x"]]), tmp_path)
+    assert exc.value.code == "DOCUMENT_UNSUPPORTED_TYPE"

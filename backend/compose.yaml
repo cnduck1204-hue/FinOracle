@@ -59,6 +59,26 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+  # 文档原件与解析产物的对象存储，应用只通过 S3 API 访问。MinIO 社区版已停止维护、官方镜像
+  # 不再公开，这里使用其维护分支 Silo（同样的接口、环境变量与数据格式）
+  minio:
+    image: pgsty/silo:RELEASE.2026-10-26T00-00-00Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      # 开发环境中应用直接使用这组根凭据；生产应为应用创建只能访问文档桶的独立密钥
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-finoracle}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?S3_SECRET_KEY is required}
+    ports:
+      - "127.0.0.1:${MINIO_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
   api:
     build:
       context: .
@@ -92,6 +112,11 @@ services:
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
       GOTENBERG_URL: http://gotenberg:3000
       CONVERSION_TIMEOUT_SECONDS: "${CONVERSION_TIMEOUT_SECONDS:-120}"
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-finoracle}
+      S3_SECRET_KEY: "${S3_SECRET_KEY:?S3_SECRET_KEY is required}"
+      S3_BUCKET: ${S3_BUCKET:-finoracle-documents}
     depends_on:
       mysql:
         condition: service_healthy
@@ -99,6 +124,9 @@ services:
         condition: service_healthy
       # 转换服务未就绪时只影响 .doc 等格式的解析，不阻塞 API 启动
       gotenberg:
+        condition: service_started
+      # 对象存储只用于文档导入，未就绪时不阻塞认证等其他接口
+      minio:
         condition: service_started
     healthcheck:
       test:
@@ -113,6 +141,40 @@ services:
       timeout: 10s
       retries: 10
       start_period: 20s
+  # 后台执行解析等耗时任务。使用 API 镜像，仅传入数据库、对象存储与格式转换配置，不含认证密钥
+  worker:
+    image: finoracle-api:local
+    # 镜像由 api 服务构建，不从镜像仓库拉取
+    pull_policy: never
+    init: true
+    command: ["python", "-m", "app.worker"]
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-finoracle}
+      MYSQL_USER: ${MYSQL_USER:-finoracle}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      GOTENBERG_URL: http://gotenberg:3000
+      CONVERSION_TIMEOUT_SECONDS: "${CONVERSION_TIMEOUT_SECONDS:-120}"
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-finoracle}
+      S3_SECRET_KEY: "${S3_SECRET_KEY:?S3_SECRET_KEY is required}"
+      S3_BUCKET: ${S3_BUCKET:-finoracle-documents}
+      WORKER_POLL_SECONDS: "${WORKER_POLL_SECONDS:-2}"
+      JOB_LEASE_SECONDS: "${JOB_LEASE_SECONDS:-60}"
+    # 停止时先完成当前任务；超时被终止的任务在租约到期后由其他 worker 重新执行
+    stop_grace_period: 30s
+    depends_on:
+      # API 启动时执行数据库迁移，健康后表结构已就绪
+      api:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      gotenberg:
+        condition: service_started
 volumes:
   mysql_data:
   redis_data:
+  minio_data:
