@@ -8,8 +8,8 @@ from collections.abc import Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.rag.indexing import EmbeddingProvider, VectorStore
+from app.rag.indexing.text_index import TextIndexer
 from app.rag.pipelines.base import IndexTarget, StoredUnit, UnitIndexer
-from app.rag.pipelines.text_index import TextIndexer
 from app.repositories.documents import (
     DocumentChunkRepository,
     DocumentRepository,

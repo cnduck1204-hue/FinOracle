@@ -44,7 +44,7 @@ from app.services.document_errors import (
 )
 from app.services.document_library import job_response, media_type_for
 from app.storage import ObjectStorage
-from app.storage.keys import blocks_key, original_key
+from app.storage.keys import blocks_key, original_key, version_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +248,7 @@ async def delete_version(
         # 外键级联会删除索引记录，先取出需要清理的附加方案
         extra = await VersionIndexRepository(session).list_for_version(version_id)
         extra_ingests = [index.ingest for index in extra]
+        pages_prefix = f"{version_prefix(version.document_id, version.id)}/pages/"
         # 切片与任务由外键级联删除
         await session.delete(version)
     # 数据库已提交后再删对象与向量；失败只留下孤儿数据，检索只读已发布版本，不受影响
@@ -255,6 +256,8 @@ async def delete_version(
         if key is not None:
             await run_in_threadpool(_delete_quietly, storage, key)
     await run_in_threadpool(delete_vectors_quietly, store, version_id)
+    if extra_ingests:
+        await run_in_threadpool(_delete_prefix_quietly, storage, pages_prefix)
     if pipelines is not None:
         for name in extra_ingests:
             await run_in_threadpool(pipelines.ingest(name).delete_quietly, version_id)
@@ -295,6 +298,13 @@ def _save_upload(upload: UploadFile, path: Path) -> tuple[str, int]:
     if size == 0:
         raise invalid_document("文件为空")
     return digest.hexdigest(), size
+
+
+def _delete_prefix_quietly(storage: ObjectStorage, prefix: str) -> None:
+    try:
+        storage.delete_prefix(prefix)
+    except AppException:
+        logger.warning("storage_cleanup_failed: %s", prefix)
 
 
 def _delete_quietly(storage: ObjectStorage, key: str) -> None:

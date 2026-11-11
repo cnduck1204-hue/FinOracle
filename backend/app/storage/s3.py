@@ -149,6 +149,20 @@ class S3ObjectStorage(ObjectStorage):
         except (FileNotFoundError, _BucketMissing):
             pass
 
+    def delete_prefix(self, prefix: str) -> None:
+        check_key(prefix.rstrip("/"))
+        params: dict[str, Any] = {"Bucket": self.bucket, "Prefix": prefix}
+        while True:
+            try:
+                page = self._call(self._client.list_objects_v2, **params)
+            except (FileNotFoundError, _BucketMissing):
+                return
+            for item in page.get("Contents", []):
+                self.delete(item["Key"])
+            if not page.get("IsTruncated"):
+                return
+            params["ContinuationToken"] = page["NextContinuationToken"]
+
     def _call(
         self,
         operation: Callable[..., Any],

@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_current_user
@@ -12,6 +13,7 @@ from app.schemas.pipeline import PipelineResponse
 from app.schemas.search import SearchRequest, SearchResponse
 from app.services import pipelines as pipeline_service
 from app.services import search as search_service
+from app.storage import ObjectStorage, get_storage
 
 router = APIRouter(dependencies=[Depends(require_current_user)])
 
@@ -35,6 +37,28 @@ async def list_pipelines(
 ) -> list[PipelineResponse]:
     response.headers["Cache-Control"] = "no-store"
     return pipeline_service.list_pipelines(pipelines)
+
+
+@router.get(
+    "/images/{chunk_id}",
+    response_class=StreamingResponse,
+    summary="读取检索结果的页面图片",
+)
+async def page_image(
+    chunk_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    storage: Annotated[ObjectStorage, Depends(get_storage)],
+) -> StreamingResponse:
+    size, chunks = await search_service.open_page_image(chunk_id, session, storage)
+    return StreamingResponse(
+        chunks,
+        headers={
+            "Content-Type": "image/png",
+            "Content-Length": str(size),
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.post(

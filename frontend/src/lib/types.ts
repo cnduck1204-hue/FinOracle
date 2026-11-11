@@ -240,6 +240,7 @@ export interface SearchHit {
   page_end: number | null
   bbox: number[] | null
   modality: string | null
+  has_image: boolean
 }
 
 export interface SearchOutcome {

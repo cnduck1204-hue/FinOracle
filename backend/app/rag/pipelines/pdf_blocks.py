@@ -11,11 +11,10 @@ from pathlib import Path
 
 import pymupdf
 
+from app.rag.files import download
+from app.rag.models import IngestRun, ParsedUnits, SourceFile
+from app.rag.parsing.errors import document_empty, source_unsupported
 from app.rag.parsing.models import Chunk
-from app.rag.pipelines.base import IngestRun, ParsedUnits, SourceFile
-from app.rag.pipelines.errors import source_unsupported
-from app.rag.pipelines.structured import download
-from app.services.document_errors import document_empty
 
 PARSER_VERSION = "pdf-block:1"
 MAX_UNIT_CHARS = 1200

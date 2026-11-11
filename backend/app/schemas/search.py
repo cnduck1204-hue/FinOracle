@@ -19,7 +19,7 @@ class SearchRequest(BaseModel):
     query: QueryText = Field(description="检索问题或关键词")
     document_ids: list[UUID] | None = Field(
         default=None,
-        max_length=50,
+        max_length=200,
         description="只在这些制度的已发布版本中检索；不填则检索全部已发布制度",
     )
     top_k: int = Field(default=8, ge=1, le=20, description="返回的条文数")
@@ -71,6 +71,8 @@ class SearchResult(BaseModel):
     bbox: list[float] | None = None
     # text / table；方案不提供时为 null
     modality: str | None = None
+    # 结果是页面图片，用 GET /search/images/{chunk_id} 读取；此时 content 为空
+    has_image: bool = False
 
 
 class SearchResponse(BaseModel):

@@ -8,31 +8,19 @@ from pathlib import Path
 from pydantic import TypeAdapter, ValidationError
 
 from app.core.config import ParsingSettings
+from app.rag.files import download
+from app.rag.models import IngestRun, ParsedUnits, SourceFile
 from app.rag.parsing import PARSER_VERSION, TextBlock, convert_to_pdf, parse_file
 from app.rag.parsing.converters import CONVERTIBLE_TYPES, ConverterProvider
-from app.rag.pipelines.base import IngestRun, ParsedUnits, SourceFile
-from app.schemas.document import ParseRequest
-from app.services.document_errors import (
+from app.rag.parsing.errors import (
     document_empty,
-    file_missing,
     invalid_parse_options,
 )
-from app.services.document_parsing import (
-    create_document_converter,
-    ocr_provider,
-    parse_options,
-)
-from app.storage import ObjectStorage
+from app.rag.parsing.parameters import ParseRequest, parse_options
+from app.rag.parsing.providers import create_document_converter, ocr_provider
 from app.storage.keys import blocks_key, converted_pdf_key
 
 _BLOCKS = TypeAdapter(list[TextBlock])
-
-
-def download(storage: ObjectStorage, key: str, path: Path) -> None:
-    try:
-        storage.download_file(key, path)
-    except FileNotFoundError as error:
-        raise file_missing() from error
 
 
 class StructuredParser:
