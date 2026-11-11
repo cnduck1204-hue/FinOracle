@@ -384,6 +384,24 @@ C 阶段的第一部分，到检索为止，尚未包含重排与大模型生成
 - **实测**：在真实 DashScope 与 Milvus 上，用切片原文查询，两路都把该切片排在第一，经 HTTP 的完整请求中位数约 330 ms。
 - **尚未实现**：重排（Rerank）、依据是否充分的判断、大模型生成与引用标注、会话保存。
 
+## 9B 可组合的检索方案（2026-11-10，代码在 `app/rag/pipelines/`）
+
+一个 Pipeline 是从入库到检索的完整流程，由两部分组合而成，便于用户选择和横向评测：
+
+- **入库部分**（`IngestPipeline`）= 一个解析器 + 若干索引器。切片、向量集合和索引状态都按入库部分的名字隔离，两个 Pipeline 可以共用一份入库结果。
+- **检索部分**（`RetrievalPipeline`）声明需要的通道（dense、keyword、visual）。组合时校验这些通道都由入库部分提供，组合错误在启动时暴露。
+
+| Pipeline | 入库部分 | 解析 | 通道 | 引用 |
+| --- | --- | --- | --- | --- |
+| `structured-hybrid`（默认） | `structured` | 多格式、OCR、按条文切片 | dense + BM25 | 条号、页码 |
+| `pdf-block-visual` | `pdf-block` | PyMuPDF 文本块与表格，不做 OCR | dense + BM25 + 页面视觉 | 页码、bbox |
+
+- **默认方案**走版本自身的生命周期，行为不变。**附加方案**由 `POST /admin/versions/{id}/pipelines/{name}` 按需建立（版本须为 ready 或 published），状态记在 `version_indexes`，失败不影响版本和默认方案。任务类型为 `pipeline`，可用原重试接口重试。
+- **检索**：`POST /search` 的 `pipeline` 字段选择方案，只检索已发布且该方案索引就绪的版本。`GET /search/pipelines` 列出方案。
+- **视觉通道**：模型（默认 ColSmol-500M）运行在独立的视觉编码服务（`backend/visual_service/`，Compose 的 `visual` profile），API 和 worker 不依赖 torch；未设置 `VISUAL_SERVICE_URL` 时该方案显示为不可用。页面多向量存在 Milvus 的结构体数组字段，按 MAX_SIM_COSINE 检索，命中的页展开为该页上的切片后参与 RRF。没有切片的页（如扫描页）不会出现在结果中。
+- **另一套实现中未移植或已替换的部分**：Qdrant 换成 Milvus，TF-IDF 换成 Milvus BM25，文件登记换成 MySQL，向量化与默认方案共用同一 EmbeddingProvider（评测时只比较方案差异），文本块的向量化文本加上制度标题。重排和答案生成不在“入库到检索”的范围内，暂未移植。
+- 增加方案：在 `registry.py` 的 `build_pipelines` 中组合入库和检索两部分；新的入库部分用新的名字。
+
 ## 10 外部数据导入
 
 脚本 `scripts/import_release.py <交付目录>`：

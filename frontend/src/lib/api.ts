@@ -7,6 +7,7 @@ import type {
   JobListQuery,
   Page,
   ParseOptions,
+  PipelineInfo,
   ProfileInput,
   RegisterInput,
   SearchInput,
@@ -17,6 +18,7 @@ import type {
   UserListQuery,
   UserPage,
   VersionMetadata,
+  VersionPipeline,
 } from './types'
 import { browserLockRequest, TabLease, type LockRequest } from './tab-lease'
 
@@ -473,6 +475,28 @@ export class AuthClient {
     if (!result || !Array.isArray(result.results))
       throw new ApiError('检索结果未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
     return result
+  }
+
+  async listPipelines(): Promise<PipelineInfo[]> {
+    const result = await this.protectedRequest<unknown>('/search/pipelines')
+    if (!Array.isArray(result))
+      throw new ApiError('检索方案未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result as PipelineInfo[]
+  }
+
+  async listVersionPipelines(versionId: string): Promise<VersionPipeline[]> {
+    const result = await this.protectedRequest<unknown>(`${versionPath(versionId)}/pipelines`)
+    if (!Array.isArray(result))
+      throw new ApiError('方案状态未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result as VersionPipeline[]
+  }
+
+  async buildVersionPipeline(versionId: string, name: string): Promise<ImportJob> {
+    const result = await this.protectedRequest<unknown>(
+      `${versionPath(versionId)}/pipelines/${encodeURIComponent(name)}`,
+      { method: 'POST' },
+    )
+    return validateRecord(result, '任务信息')
   }
 
   async listDocuments(query: DocumentListQuery = {}): Promise<Page<DocumentSummary>> {

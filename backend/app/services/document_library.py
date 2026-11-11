@@ -80,6 +80,7 @@ def job_response(row: Row) -> JobResponse:
         document_title=title,
         file_name=file_name,
         kind=job.kind,
+        ingest=job.ingest,
         status=job.status,
         stage=job.stage,
         progress_current=job.progress_current,

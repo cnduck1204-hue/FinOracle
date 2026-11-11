@@ -62,6 +62,8 @@ class ClaimedJob:
     attempt: int
     max_attempts: int
     created_by: UUID | None
+    # 附加方案任务的入库方案名
+    ingest: str | None = None
 
 
 class JobContext:
@@ -209,6 +211,7 @@ class Worker:
                 attempt=job.attempts,
                 max_attempts=job.max_attempts,
                 created_by=job.created_by,
+                ingest=job.ingest,
             )
 
     async def _execute(self, job: ClaimedJob) -> None:

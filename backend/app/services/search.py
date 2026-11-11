@@ -10,7 +10,7 @@ import time
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
-from app.rag.retrieval import HybridRetriever
+from app.rag.pipelines import PipelineRegistry, pipeline_unavailable
 from app.repositories.documents import (
     DocumentChunkRepository,
     DocumentVersionRepository,
@@ -27,7 +27,12 @@ logger = logging.getLogger(__name__)
 
 # 依赖服务的这些错误对用户统一表现为检索暂不可用；具体原因只记日志
 _DEPENDENCY_FAILURES = frozenset(
-    {"EMBEDDING_UNAVAILABLE", "EMBEDDING_AUTH_FAILED", "VECTOR_STORE_UNAVAILABLE"}
+    {
+        "EMBEDDING_UNAVAILABLE",
+        "EMBEDDING_AUTH_FAILED",
+        "VECTOR_STORE_UNAVAILABLE",
+        "VISUAL_UNAVAILABLE",
+    }
 )
 
 
@@ -40,16 +45,28 @@ def search_unavailable() -> AppException:
 
 
 async def search(
-    payload: SearchRequest, session: AsyncSession, retriever: HybridRetriever
+    payload: SearchRequest, session: AsyncSession, pipelines: PipelineRegistry
 ) -> SearchResponse:
     started = time.perf_counter()
+    pipeline = pipelines.get(payload.pipeline)
+    if pipeline.unavailable_reason is not None:
+        raise pipeline_unavailable(pipeline.unavailable_reason)
+    ingest = pipeline.ingest.name
     async with session.begin():
         version_ids = await DocumentVersionRepository(session).published_ids(
-            payload.document_ids
+            payload.document_ids, ingest=ingest
         )
+
+    async def page_units(pages):
+        async with session.begin():
+            return await DocumentChunkRepository(session).ids_on_pages(ingest, pages)
+
     try:
-        hits = await retriever.retrieve(
-            payload.query, version_ids=version_ids, limit=payload.top_k
+        hits = await pipeline.retrieval.retrieve(
+            payload.query,
+            version_ids=version_ids,
+            limit=payload.top_k,
+            page_units=page_units,
         )
     except AppException as error:
         if error.code not in _DEPENDENCY_FAILURES:
@@ -79,6 +96,8 @@ async def search(
                     dense_score=hit.dense_score,
                     keyword_rank=hit.keyword_rank,
                     keyword_score=hit.keyword_score,
+                    visual_rank=hit.visual_rank,
+                    visual_score=hit.visual_score,
                     document=SearchDocument(
                         id=document.id, title=document.title, issuer=document.issuer
                     ),
@@ -99,6 +118,8 @@ async def search(
                     content=chunk.content,
                     page_start=chunk.page_start,
                     page_end=chunk.page_end,
+                    bbox=chunk.bbox,
+                    modality=chunk.modality,
                 )
             )
     # 只记录耗时与数量，不记录用户的问题
@@ -109,4 +130,4 @@ async def search(
         retrieved_ms,
         (time.perf_counter() - started) * 1000,
     )
-    return SearchResponse(query=payload.query, results=results)
+    return SearchResponse(query=payload.query, pipeline=pipeline.name, results=results)

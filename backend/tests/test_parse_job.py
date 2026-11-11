@@ -8,8 +8,8 @@ from sqlalchemy import select
 from app.core.config import ParsingSettings
 from app.models import DocumentChunk, DocumentVersion, ImportJob
 from app.rag.parsing import PARSER_VERSION
+from app.rag.pipelines import structured as parse_worker
 from app.storage.keys import blocks_key, converted_pdf_key
-from app.worker import parse as parse_worker
 from app.worker.parse import ParseHandler
 from app.worker.runtime import ClaimedJob, JobContext, LeaseLost, Worker
 from tests.parsing_samples import OLE2_HEADER, FakeConverter
@@ -246,7 +246,7 @@ def test_old_parse_attempt_cannot_overwrite_objects_after_takeover(
         )
         entered = threading.Event()
         release = threading.Event()
-        download = parse_worker._download
+        download = parse_worker.download
         put_file = env.storage.put_file
         writes = []
 
@@ -260,7 +260,7 @@ def test_old_parse_attempt_cannot_overwrite_objects_after_takeover(
             writes.append(key)
             put_file(key, path, **kwargs)
 
-        monkeypatch.setattr(parse_worker, "_download", paused_download)
+        monkeypatch.setattr(parse_worker, "download", paused_download)
         monkeypatch.setattr(env.storage, "put_file", tracked_put_file)
         pending = asyncio.create_task(old.run_once())
         try:

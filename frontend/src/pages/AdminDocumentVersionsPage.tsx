@@ -14,11 +14,13 @@ import {
 } from '../components/IngestionUi'
 import { Notice } from '../components/Notice'
 import { VersionActions } from '../components/VersionActions'
+import { VersionPipelines } from '../components/VersionPipelines'
 import { errorMessage } from '../lib/api'
 import {
   PARSE_STATUS_LABELS,
   formatBytes,
   formatDateTime,
+  isJobActive,
   isVersionBusy,
   versionName,
 } from '../lib/ingestion'
@@ -96,7 +98,12 @@ export function AdminDocumentVersionsPage() {
       return { document, versions }
     },
     [client, documentId],
-    (value) => value.versions.some((version) => isVersionBusy(version.status)),
+    (value) =>
+      value.versions.some(
+        (version) =>
+          isVersionBusy(version.status) ||
+          (version.latest_job && isJobActive(version.latest_job.status)),
+      ),
   )
   useEffect(() => {
     setNotice('')
@@ -204,6 +211,11 @@ export function AdminDocumentVersionsPage() {
                       )}
                     </div>
                   )}
+                  <VersionPipelines
+                    version={version}
+                    onChanged={changed}
+                    onError={setActionError}
+                  />
                   <div className="version-card-foot">
                     {version.latest_job && (
                       <Link className="text-button" to={`/admin/imports/${version.latest_job.id}`}>

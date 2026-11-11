@@ -115,6 +115,7 @@ export function AdminImportsPage() {
               <option value="">全部类型</option>
               <option value="parse">{JOB_KIND_LABELS.parse}</option>
               <option value="index">{JOB_KIND_LABELS.index}</option>
+              <option value="pipeline">{JOB_KIND_LABELS.pipeline}</option>
             </select>
           </div>
           <div className="admin-filter-actions">

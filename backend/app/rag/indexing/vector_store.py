@@ -78,27 +78,28 @@ class VectorStore(ABC):
         """在指定版本中按 BM25 关键词检索（中文分词），按分数从高到低。"""
 
 
-def collection_name(prefix: str, model: str, dimension: int) -> str:
-    """不同模型或维度的向量互不兼容，各用一个集合。"""
-    slug = re.sub(r"[^A-Za-z0-9]+", "_", model).strip("_").lower()
-    return f"{prefix}_{slug}_{dimension}"
+def _slug(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9]+", "_", value).strip("_").lower()
 
 
-class MilvusVectorStore(VectorStore):
-    """稠密向量用余弦相似度；text 字段经中文分词生成 BM25 稀疏向量，供混合检索。"""
+def collection_name(
+    prefix: str, model: str, dimension: int, *, namespace: str = ""
+) -> str:
+    """不同模型或维度的向量互不兼容，各用一个集合；附加入库方案用 namespace 隔离。"""
+    name = f"{prefix}_{_slug(model)}_{dimension}"
+    return f"{name}_{_slug(namespace)}" if namespace else name
+
+
+class MilvusCollection:
+    """一个 Milvus 集合的共用操作；子类给出字段与索引。"""
 
     def __init__(
         self,
         settings: VectorStoreSettings,
-        *,
-        model: str,
-        dimension: int,
+        collection: str,
         client_factory: Callable[[], Any] | None = None,
     ) -> None:
-        self.collection = collection_name(
-            settings.milvus_collection_prefix, model, dimension
-        )
-        self.dimension = dimension
+        self.collection = collection
         token = (
             settings.milvus_token.get_secret_value() if settings.milvus_token else ""
         )
@@ -131,6 +132,60 @@ class MilvusVectorStore(VectorStore):
 
         self._call(ensure)
 
+    def delete_by_version(self, version_id: UUID) -> None:
+        def delete(client: Any) -> None:
+            if client.has_collection(self.collection):
+                client.delete(self.collection, filter=_version_filter(version_id))
+
+        self._call(delete)
+
+    def _call(self, operation: Callable[[Any], Any]) -> Any:
+        try:
+            if self._client is None:
+                with self._client_lock:
+                    if self._client is None:
+                        self._client = self._factory()
+            return operation(self._client)
+        except (MilvusException, OSError) as error:
+            logger.warning("vector_store_failed: %s", type(error).__name__)
+            raise vector_store_unavailable() from error
+
+    @staticmethod
+    def _versions_filter(version_ids: Sequence[UUID]) -> str:
+        return _versions_filter(version_ids)
+
+    def _schema(self) -> Any:
+        raise NotImplementedError
+
+    @staticmethod
+    def _index_params(client: Any) -> Any:
+        raise NotImplementedError
+
+
+class MilvusVectorStore(MilvusCollection, VectorStore):
+    """稠密向量用余弦相似度；text 字段经中文分词生成 BM25 稀疏向量，供混合检索。"""
+
+    def __init__(
+        self,
+        settings: VectorStoreSettings,
+        *,
+        model: str,
+        dimension: int,
+        client_factory: Callable[[], Any] | None = None,
+        namespace: str = "",
+    ) -> None:
+        super().__init__(
+            settings,
+            collection_name(
+                settings.milvus_collection_prefix,
+                model,
+                dimension,
+                namespace=namespace,
+            ),
+            client_factory,
+        )
+        self.dimension = dimension
+
     def upsert(self, records: Sequence[VectorRecord]) -> None:
         if not records:
             return
@@ -145,13 +200,6 @@ class MilvusVectorStore(VectorStore):
             for record in records
         ]
         self._call(lambda client: client.upsert(self.collection, data=data))
-
-    def delete_by_version(self, version_id: UUID) -> None:
-        def delete(client: Any) -> None:
-            if client.has_collection(self.collection):
-                client.delete(self.collection, filter=_version_filter(version_id))
-
-        self._call(delete)
 
     def search_dense(
         self, vector: Sequence[float], *, version_ids: Sequence[UUID], limit: int
@@ -260,17 +308,6 @@ class MilvusVectorStore(VectorStore):
         # 检索与删除都按版本过滤
         params.add_index(field_name="version_id", index_type="INVERTED")
         return params
-
-    def _call(self, operation: Callable[[Any], Any]) -> Any:
-        try:
-            if self._client is None:
-                with self._client_lock:
-                    if self._client is None:
-                        self._client = self._factory()
-            return operation(self._client)
-        except (MilvusException, OSError) as error:
-            logger.warning("vector_store_failed: %s", type(error).__name__)
-            raise vector_store_unavailable() from error
 
 
 def _version_filter(version_id: UUID) -> str:

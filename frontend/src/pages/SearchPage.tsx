@@ -5,6 +5,7 @@ import { ValidityTag } from '../components/IngestionUi'
 import { Notice } from '../components/Notice'
 import { errorMessage } from '../lib/api'
 import { articlePath, formatDate, pageLabel } from '../lib/ingestion'
+import { useResource } from '../lib/useResource'
 import type { SearchHit, SearchOutcome } from '../lib/types'
 
 const MAX_QUERY = 1000
@@ -14,6 +15,7 @@ function Result({ hit, index }: { hit: SearchHit; index: number }) {
   const channels = [
     hit.dense_rank !== null && `语义第 ${hit.dense_rank}`,
     hit.keyword_rank !== null && `关键词第 ${hit.keyword_rank}`,
+    hit.visual_rank !== null && `视觉第 ${hit.visual_rank}`,
   ].filter(Boolean)
   return (
     <li className="search-result">
@@ -53,6 +55,12 @@ function Result({ hit, index }: { hit: SearchHit; index: number }) {
           <dt>页码</dt>
           <dd>{pageLabel(hit.page_start, hit.page_end)}</dd>
         </div>
+        {hit.modality === 'table' && (
+          <div>
+            <dt>内容类型</dt>
+            <dd>表格</dd>
+          </div>
+        )}
         {version.source_url && (
           <div>
             <dt>来源</dt>
@@ -73,10 +81,15 @@ export function SearchPage() {
   const { client } = useAuth()
   const [query, setQuery] = useState('')
   const [topK, setTopK] = useState(8)
+  const pipelines = useResource(() => client.listPipelines(), [client])
+  const [chosen, setChosen] = useState('')
   const [outcome, setOutcome] = useState<SearchOutcome | null>(null)
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<unknown>(null)
   const latest = useRef(0)
+  const options = pipelines.data ?? []
+  const selected = options.find((item) => item.name === chosen) ?? options.find((p) => p.default)
+  const usedLabel = options.find((item) => item.name === outcome?.pipeline)?.label
 
   async function run() {
     const text = query.trim()
@@ -85,7 +98,7 @@ export function SearchPage() {
     setSearching(true)
     setError(null)
     try {
-      const result = await client.search({ query: text, top_k: topK })
+      const result = await client.search({ query: text, top_k: topK, pipeline: selected?.name })
       if (request === latest.current) setOutcome(result)
     } catch (caught) {
       if (request === latest.current) {
@@ -139,6 +152,23 @@ export function SearchPage() {
         />
         <div className="composer-bottom">
           <div className="composer-scope">
+            {options.length > 1 && selected && (
+              <>
+                <label htmlFor="search-pipeline">检索方案</label>
+                <select
+                  id="search-pipeline"
+                  value={selected.name}
+                  onChange={(event) => setChosen(event.target.value)}
+                >
+                  {options.map((item) => (
+                    <option key={item.name} value={item.name} disabled={!item.available}>
+                      {item.label}
+                      {item.available ? '' : '（不可用）'}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
             <label htmlFor="search-top-k">返回条数</label>
             <select
               id="search-top-k"
@@ -166,7 +196,10 @@ export function SearchPage() {
           </button>
         </div>
       </form>
-      <p className="search-hint">Enter 检索，Shift + Enter 换行。未发布的草稿不会出现在结果中。</p>
+      <p className="search-hint">
+        {options.length > 1 && selected && <>{selected.description} </>}
+        Enter 检索，Shift + Enter 换行。未发布的草稿不会出现在结果中。
+      </p>
 
       {Boolean(error) && (
         <Notice kind="error" error={error}>
@@ -182,7 +215,7 @@ export function SearchPage() {
               检索结果
             </h2>
             <span className="search-count" role="status">
-              “{outcome.query}” 找到 {outcome.results.length} 条
+              {usedLabel && `${usedLabel} · `}“{outcome.query}” 找到 {outcome.results.length} 条
             </span>
           </div>
           {outcome.results.length ? (
@@ -193,7 +226,8 @@ export function SearchPage() {
             </ol>
           ) : (
             <div className="admin-state">
-              没有找到相关条文。可以换一种说法，或确认相关制度已经发布。
+              没有找到相关条文。可以换一种说法，或确认相关制度已经发布
+              {selected && !selected.default ? '，并已建立该方案的索引' : ''}。
             </div>
           )}
         </section>
