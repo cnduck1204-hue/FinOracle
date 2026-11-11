@@ -90,13 +90,16 @@ def test_document_lookup_by_id_and_external_id(db):
 
 
 def test_new_version_defaults(db):
+    started = utc_now()
     version = add_version(db, add_document(db))
+    finished = utc_now()
 
     assert version.status == "uploaded"
     assert version.validity_status == "unknown"
     assert version.chunk_count == 0
     assert version.parse_status is None
-    assert version.created_at == version.updated_at
+    # 两个字段分别取时，校验创建窗口与先后顺序。
+    assert started <= version.created_at <= version.updated_at <= finished
 
 
 def test_versions_are_unique_per_document_file(db):
