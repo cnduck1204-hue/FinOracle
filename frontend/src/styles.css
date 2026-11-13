@@ -1,9 +1,7 @@
 @import '@fontsource-variable/saira';
 
 :root {
-  --ui-scale: 0.8;
-  --viewport-height: calc(100svh / var(--ui-scale));
-  zoom: var(--ui-scale);
+  --viewport-height: 100svh;
   font-family: 'Saira Variable', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   color: #20251f;
   background: #f2f3ed;
@@ -238,7 +236,7 @@ svg {
   padding: 13px 15px;
   border-left: 3px solid var(--ink);
   background: var(--panel);
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.8;
 }
 .notice-error {
@@ -291,7 +289,7 @@ svg {
 }
 .auth-content {
   display: grid;
-  grid-template-columns: 1.08fr 1fr;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
   flex: 1;
 }
 .auth-story {
@@ -321,7 +319,7 @@ svg {
 .auth-story-lead {
   margin: 15px 0 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.95;
   position: relative;
   z-index: 1;
@@ -356,12 +354,12 @@ svg {
 }
 .story-step strong {
   display: block;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 550;
 }
 .story-step small {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 5px;
 }
@@ -382,7 +380,7 @@ svg {
   justify-content: center;
 }
 .auth-form-container {
-  width: min(100%, 370px);
+  width: min(100%, 460px);
   animation: enter 220ms ease-out;
 }
 .auth-form-container h2 {
@@ -393,7 +391,7 @@ svg {
 }
 .auth-description {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--muted);
   line-height: 1.9;
 }
@@ -441,7 +439,7 @@ svg {
   justify-content: space-between;
   align-items: baseline;
   margin-bottom: 8px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 550;
 }
 .form-field .field-label small {
@@ -467,12 +465,12 @@ svg {
 .input-wrap input {
   width: 100%;
   min-width: 0;
-  height: 47px;
+  height: 50px;
   border: 1px solid var(--rule);
   background: transparent;
   padding: 10px 44px 10px 42px;
   color: var(--ink);
-  font-size: 14px;
+  font-size: 16px;
 }
 .input-wrap input::placeholder {
   color: #9a9f95;
@@ -485,7 +483,7 @@ svg {
   display: block;
   margin-top: 5px;
   color: var(--error);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.6;
 }
 .form-field input[aria-invalid='true'] {
@@ -497,9 +495,10 @@ svg {
   margin-top: 6px;
   height: 49px;
   padding-left: 20px;
+  font-size: 15px;
 }
 .auth-privacy {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
   line-height: 1.8;
   padding-top: 21px;
@@ -718,6 +717,9 @@ svg {
   flex: 1;
   animation: enter 200ms ease-out;
 }
+.page-content:has(.workspace-hero) {
+  max-width: 1760px;
+}
 .page-heading {
   display: flex;
   align-items: flex-start;
@@ -749,7 +751,7 @@ svg {
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 11px;
+  font-size: 13px;
   color: #717a66;
 }
 .welcome-label > span:first-child {
@@ -790,7 +792,7 @@ svg {
 }
 .hero-copy p {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1.9;
   margin: 17px 0 0;
 }
@@ -802,7 +804,7 @@ svg {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 550;
   margin: 0;
 }
@@ -833,23 +835,23 @@ svg {
   padding: 19px 22px 0;
 }
 .composer-top label {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 550;
 }
 .composer-top > span {
   color: #a0a796;
-  font-size: 10px;
+  font-size: 12px;
 }
 .composer textarea {
   width: 100%;
   display: block;
-  min-height: 100px;
+  min-height: 150px;
   resize: vertical;
   padding: 14px 22px 20px;
   border: 0;
   background: none;
   color: var(--ink);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.9;
 }
 .composer textarea::placeholder {
@@ -873,13 +875,13 @@ svg {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
 }
 .composer-bottom .cut-button {
   min-height: 41px;
   padding: 10px 17px;
-  font-size: 11px;
+  font-size: 14px;
 }
 .composer-caption {
   display: flex;
@@ -887,7 +889,7 @@ svg {
   align-items: flex-start;
   gap: 12px;
   margin-top: 11px;
-  font-size: 10px;
+  font-size: 12px;
   color: #818a76;
   line-height: 1.8;
 }
@@ -901,7 +903,7 @@ svg {
 }
 .draft-feedback {
   margin-top: 12px;
-  font-size: 11px;
+  font-size: 13px;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -950,13 +952,13 @@ svg {
 }
 .starter-card strong {
   display: block;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 550;
 }
 .starter-card small {
   display: block;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.8;
   margin-top: 6px;
 }
@@ -977,7 +979,7 @@ svg {
   align-items: center;
   gap: 8px;
   color: #9ba38f;
-  font-size: 10px;
+  font-size: 12px;
 }
 .flow-item.current {
   color: var(--ink);
@@ -1499,7 +1501,7 @@ svg {
 
 @media (min-width: 1600px) {
   .auth-frame {
-    max-width: 1540px;
+    max-width: 1760px;
     margin: 28px auto;
     min-height: calc(var(--viewport-height) - 56px);
   }
@@ -1525,7 +1527,7 @@ svg {
     margin-top: 12px;
   }
   .story-step small {
-    font-size: 9px;
+    font-size: 12px;
   }
   .page-content {
     padding: 30px;
@@ -1613,7 +1615,7 @@ svg {
     font-size: 30px;
   }
   .auth-story-lead {
-    font-size: 11px;
+    font-size: 14px;
   }
   .auth-form-side {
     padding: 36px 27px;
@@ -1634,10 +1636,11 @@ svg {
     margin-top: 2px;
   }
   .story-step strong {
-    font-size: 11px;
+    font-size: 14px;
   }
   .story-step small {
     margin-top: 2px;
+    font-size: 12px;
   }
 }
 @media (max-width: 600px) {
@@ -1715,7 +1718,7 @@ svg {
     margin-top: 9px;
   }
   .auth-description {
-    font-size: 11px;
+    font-size: 14px;
   }
   .auth-tabs {
     margin: 19px 0 23px;
@@ -1730,6 +1733,7 @@ svg {
   }
   .auth-privacy {
     padding-top: 19px;
+    font-size: 12px;
   }
   .input-wrap input {
     font-size: 16px;
@@ -1751,7 +1755,7 @@ svg {
     font-size: 9px;
   }
   .welcome-label {
-    font-size: 10px;
+    font-size: 13px;
   }
   .welcome-label > strong {
     max-width: 200px;
@@ -1775,7 +1779,7 @@ svg {
     font-size: 33px;
   }
   .hero-copy p {
-    font-size: 11px;
+    font-size: 15px;
     max-width: 270px;
     line-height: 1.9;
     margin-top: 14px;
@@ -1803,17 +1807,17 @@ svg {
     gap: 8px;
   }
   .composer-scope {
-    font-size: 9px;
+    font-size: 12px;
     gap: 5px;
   }
   .composer-bottom .cut-button {
     min-height: 42px;
     padding: 10px 12px;
-    font-size: 10px;
+    font-size: 14px;
     gap: 8px;
   }
   .composer-caption {
-    font-size: 9px;
+    font-size: 12px;
     flex-direction: column;
     gap: 4px;
   }
@@ -1837,7 +1841,7 @@ svg {
     padding: 19px 0;
   }
   .flow-item {
-    font-size: 9px;
+    font-size: 12px;
     gap: 6px;
   }
   .flow-line {
