@@ -102,12 +102,11 @@ export function AdminImportNewPage() {
         {documentId ? '返回版本管理' : '返回导入任务'}
       </Link>
       <header className="page-heading">
-        <div>
-          <span className="eyebrow">// IMPORT DOCUMENT</span>
+        <div className="page-heading-text">
+          <span className="page-kicker">Document Ingestion</span>
           <h1>{documentId ? '上传新版本' : '导入文档'}</h1>
-          <p>上传后在后台解析。发布前，用户不会检索到这份文档。</p>
+          <p>上传后将在后台自动解析切片。正式发布前，用户不会检索到这份文档。</p>
         </div>
-        <span className="page-index">IMPORT / 01</span>
       </header>
 
       {existing.loading && <LoadingState>正在读取制度…</LoadingState>}
@@ -117,7 +116,7 @@ export function AdminImportNewPage() {
           <fieldset disabled={submitting}>
             <section className="ingest-section">
               <h2>
-                <span>01</span>选择文件
+                <span className="ingest-step-num">1</span>选择文件
               </h2>
               <label
                 className={`drop-zone ${dragging ? 'drop-zone-active' : ''}`}
@@ -136,9 +135,9 @@ export function AdminImportNewPage() {
                   aria-label="选择要导入的文件"
                   onChange={onSelect}
                 />
-                <FileUp size={26} strokeWidth={1.3} aria-hidden="true" />
+                <FileUp size={26} strokeWidth={1.5} aria-hidden="true" />
                 <strong>点击选择，或把文件拖到这里</strong>
-                <small>PDF、Word、RTF、ODT、TXT、Markdown 或图片，单个不超过 50 MB</small>
+                <small>支持 PDF、Word、RTF、ODT、TXT、Markdown 或图片，单个不超过 50 MB</small>
               </label>
               {file && (
                 <div className="picked-file">
@@ -160,13 +159,13 @@ export function AdminImportNewPage() {
 
             <section className="ingest-section">
               <h2>
-                <span>02</span>制度信息
+                <span className="ingest-step-num">2</span>制度信息
               </h2>
               {existing.data ? (
-                <p className="ingest-existing">
-                  为 <strong>{existing.data.title}</strong>{' '}
-                  创建新版本。已发布的版本在新版本发布前不受影响。
-                </p>
+                <div className="ingest-target">
+                  <strong>{existing.data.title}</strong>
+                  <small>为此制度创建新版本。已发布的版本在新版本发布前不受影响。</small>
+                </div>
               ) : (
                 <div className="ingest-grid">
                   <Field
@@ -183,15 +182,13 @@ export function AdminImportNewPage() {
 
             <section className="ingest-section">
               <h2>
-                <span>03</span>版本登记信息
+                <span className="ingest-step-num">3</span>版本登记信息
               </h2>
               <MetadataFields idPrefix="import" value={metadata} onChange={setMetadata} />
             </section>
 
-            <details className="ingest-section ingest-advanced">
-              <summary>
-                <span>04</span>解析参数（通常不用修改）
-              </summary>
+            <details className="ingest-details">
+              <summary>高级选项：解析参数（通常不用修改）</summary>
               <ParseOptionFields idPrefix="import" value={options} onChange={setOptions} />
             </details>
 
@@ -201,9 +198,9 @@ export function AdminImportNewPage() {
                 {errorMessage(error)}
               </Notice>
             )}
-            <div className="profile-actions">
-              <button className="cut-button button-primary" type="submit">
-                {submitting && <LoaderCircle size={14} className="spinner" />}
+            <div className="ingest-submit-row">
+              <button className="btn btn-primary btn-lg" type="submit">
+                {submitting && <LoaderCircle size={15} className="spinner" />}
                 {submitting ? '正在上传…' : '开始导入'}
               </button>
             </div>

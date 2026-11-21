@@ -13,6 +13,8 @@ docker compose up --build -d --wait
 
 默认 API 端口为 8001，MySQL 为 3306，Redis 为 6379，Gotenberg（文档格式转换）为 3000，对象存储为 9000（Web 控制台 9001，用 `S3_ACCESS_KEY` / `S3_SECRET_KEY` 登录），Milvus 向量库为 19530；都仅绑定本机。首次启动需拉取约 420 MB 的 Gotenberg 镜像、约 230 MB 的对象存储镜像和约 1.4 GB 的 Milvus 镜像。
 
+`dsh` 随 Compose 启动，通过私有网络接收 API 的问答轮次。使用问答需在 `.env` 填写 `DEEPSEEK_API_KEY` 和检索所需的 `DASHSCOPE_API_KEY`。旧环境可重新运行初始化命令补齐 `CHAT_DSH_TOKEN`，然后一起重建 `api` 和 `dsh`。 [问答配置与升级](dsh/README.md)
+
 对象存储使用 Silo（`pgsty/silo`）：MinIO 社区版已停止维护，官方镜像不再公开提供，Silo 是它的维护分支，接口与数据格式相同。应用只通过 S3 API 访问，换成其他 S3 兼容存储只需修改 `S3_*` 配置。2026-11-05 之前生成的 `.env` 缺少 `S3_SECRET_KEY`，Compose 会提示该变量必填而拒绝启动；在 `backend/.env` 末尾追加一行随机值即可：
 
 ```sh
@@ -30,9 +32,9 @@ uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-此时接口文档位于 `http://127.0.0.1:8000/docs`。从项目根目录调用时使用 `uv --directory backend run ...`，确保读取正确的 `.env`。
+此时接口文档位于 `http://127.0.0.1:8000/docs`。从项目根目录调用时使用 `uv --directory backend run ...`，确保读取正确的 `.env`。调试问答需要同时运行可由宿主机访问的 `dsh`。 [本机问答调试](dsh/README.md#本机调试)
 
-本机运行 worker（另开终端；`.env` 中 `GOTENBERG_URL` 设为 `http://127.0.0.1:3000` 才能转换 .doc 等格式）。Compose 中的 worker 也会认领同一张任务表，调试本机 worker 时先执行 `docker compose stop worker`：
+本机调试旧格式文件时，先用 `docker compose up -d --wait gotenberg` 启动转换服务，并将 `.env` 中的 `GOTENBERG_URL` 设为 `http://127.0.0.1:3000`。本机 worker 在另一个终端运行。Compose 中的 worker 也会认领同一张任务表，调试本机 worker 时先执行 `docker compose stop worker`：
 
 ```sh
 uv run python -m app.worker
@@ -42,53 +44,13 @@ uv run python -m app.worker
 
 ## 接口
 
-默认前缀为 `/api/v1`，实际请求及响应结构以 `/docs` 或 `/openapi.json` 为准。
-
-| 方法 | 路径 | 用途 | 成功状态 |
-| --- | --- | --- | --- |
-| GET | `/health` | 进程存活 | 200 |
-| GET | `/ready` | MySQL、Redis 就绪 | 200 |
-| POST | `/auth/register` | 注册普通用户 | 201 |
-| POST | `/auth/login` | 用户名或邮箱登录 | 200 |
-| POST | `/auth/refresh` | 用 Refresh Token 换取新双令牌 | 200 |
-| POST | `/auth/logout` | 退出当前会话 | 204 |
-| GET | `/users/me` | 查询自己的公开资料 | 200 |
-| PATCH | `/users/me` | 修改自己的用户名或邮箱 | 200 |
-| GET | `/admin/users` | 管理员分页搜索、筛选用户 | 200 |
-| GET | `/admin/users/{user_id}` | 管理员查询用户详情 | 200 |
-| PATCH | `/admin/users/{user_id}/status` | 管理员启用或禁用普通用户 | 200 |
-| POST | `/admin/documents/parse` | 管理员上传文档并返回解析结果（预览，不入库） | 200 |
-| POST | `/admin/imports` | 上传文档入库：存储原件并创建解析任务，由 worker 后台解析 | 202 |
-| POST | `/search` | 登录用户在已发布制度中混合检索条文（向量 + BM25，RRF 融合），可限定制度范围 | 200 |
-| GET | `/admin/imports`、`/admin/imports/{job_id}` | 导入任务列表与详情（阶段、进度、错误） | 200 |
-| POST | `/admin/imports/{job_id}/retry` | 重新执行失败的任务 | 202 |
-| GET | `/admin/documents`、`/admin/documents/{document_id}` | 制度列表（搜索、是否已发布）与详情 | 200 |
-| PATCH | `/admin/documents/{document_id}` | 修改制度标题、发文机构 | 200 |
-| GET | `/admin/documents/{document_id}/versions` | 制度的全部版本 | 200 |
-| GET、PATCH | `/admin/versions/{version_id}` | 版本详情；修改登记信息与时效（不影响切片） | 200 |
-| GET | `/admin/versions/{version_id}/chunks` | 版本切片分页 | 200 |
-| GET | `/admin/versions/{version_id}/file` | 原件或可预览的 PDF（`variant=original\|pdf`） | 200 |
-| POST | `/admin/versions/{version_id}/reparse` | 用新参数或原参数重新解析 | 202 |
-| POST | `/admin/versions/{version_id}/approve` | 批准向量化（自动批准未覆盖的版本，或下架后重新上线） | 202 |
-| POST | `/admin/versions/{version_id}/publish` | 发布 ready 版本，原发布版本自动归档 | 200 |
-| POST | `/admin/versions/{version_id}/withdraw` | 下架已发布版本 | 200 |
-| DELETE | `/admin/versions/{version_id}` | 删除未发布的版本及其切片、任务、文件与向量 | 204 |
-
-注册提交 `username`、`email`、`password`、`confirm_password`；登录提交 `identifier`、`password`；刷新提交 `refresh_token`。退出与个人信息接口使用 `Authorization: Bearer <access_token>`。刷新接口不要求 Access Token。
-
-Access Token 默认 30 分钟，Refresh Token 默认 7 天。刷新沿用同一会话，每次更换令牌标识，并将会话过期时间更新为新 Refresh Token 的过期时间。旧刷新令牌重放会撤销整个会话；客户端须串行刷新并替换保存的双令牌。退出会同时阻止该会话的 Access Token 和 Refresh Token。
-
-登录标识统一去首尾空白并转小写，密码保持原样；数据库重音或不可见字符的近似匹配不会被当成同一登录标识。默认连续 5 次失败后限制该标识 15 分钟；密码验证成功后清除失败计数。受保护请求同时检查令牌、Redis 会话及数据库中的最新账号状态；Redis 不可用时拒绝认证并返回 503。
-
-资料更新只接受非 null 的 `username`、`email`，至少一个；沿用注册规范化及唯一性规则。管理员列表默认 `page=1`、`page_size=20`（最多 100），支持 `q`、`role`、`status`。服务端验证数据库中的当前管理员角色。禁用使该用户全部旧登录失效，重新启用必须重新登录，旧令牌不会恢复。没有全部会话退出接口。详细请求、响应和前端处理见 [API 交接](../docs/backend-handoff.md)。
-
-错误 JSON 固定包含 `code`、`message`、`request_id`。通常 401 表示凭据或令牌无效、403 表示账号禁用或权限不足、404 表示资源不存在、409 表示账号冲突、422 表示输入无效、429 表示登录受限、503 表示依赖不可用。时间统一输出 UTC。
+默认前缀为 `/api/v1`。`GET /health` 检查进程存活，`GET /ready` 检查 MySQL 与 Redis 是否就绪。认证、管理、文档入库、检索和问答的请求与响应见 [API 交接](../docs/backend-handoff.md)。运行实例的契约可在 `/docs` 或 `/openapi.json` 查看。
 
 ## 配置
 
-`.env.example` 列出完整默认项；真实 `.env` 不入库。`scripts/init_env.py` 为 MySQL 应用账号、root 账号和 JWT 分别生成随机值，已有 `.env` 会原样保留。
+`.env.example` 列出常用开发配置。首次执行 `scripts/init_env.py` 时，脚本为本地 `.env` 生成独立随机凭据。再次运行可给已有 `.env` 补齐缺失或留空的 `CHAT_DSH_TOKEN`。真实 `.env` 不入库。
 
-配置按性质分三处：随部署机器变化的配置（含密钥与路径）定义在 `app/core/config.py`，值写在 `.env` 或环境变量中，其中 `Settings` 为应用配置（包含 `DatabaseSettings` 的数据库配置），`ParsingSettings` 为不含密钥、命令行也能加载的解析配置，`StorageSettings` 为对象存储配置，`WorkerSettings` 为 worker 的数据库与调度配置（worker 不加载 `Settings`，因此不需要 JWT 密钥）；解析算法的阈值和默认值在 `app/rag/parsing/options.py`，随代码修改和测试，不读环境变量；单次请求可调的解析参数见 `app/schemas/document.py`。
+配置按性质分三处：随部署机器变化的配置（含密钥与路径）定义在 `app/core/config.py`，值写在 `.env` 或环境变量中，其中 `Settings` 为应用配置（包含 `DatabaseSettings` 的数据库配置），`ParsingSettings` 为不含密钥、命令行也能加载的解析配置，`StorageSettings` 为对象存储配置，`WorkerSettings` 为 worker 的数据库与调度配置（worker 不加载 `Settings`，因此不需要 JWT 密钥）；解析算法的阈值和默认值在 `app/rag/parsing/options.py`，随代码修改和测试，不读环境变量；单次请求可调的解析参数见 `app/rag/parsing/parameters.py`。
 
 | 配置 | 默认值 / 说明 |
 | --- | --- |
@@ -101,7 +63,7 @@ Access Token 默认 30 分钟，Refresh Token 默认 7 天。刷新沿用同一�
 | `LOGIN_MAX_FAILURES` | 5 |
 | `LOGIN_LOCK_SECONDS` | 900 |
 | `OPENAPI_ENABLED` | `true`；设为 `false` 关闭文档入口 |
-| `ADMIN_USERNAME`、`ADMIN_EMAIL`、`ADMIN_PASSWORD` | 可选首个管理员初始化；三项同时提供或全部不设置 |
+| `ADMIN_USERNAME`、`ADMIN_EMAIL`、`ADMIN_PASSWORD` | 启动时创建首个管理员，或同步指定管理员的密码。三项同时提供或全部留空 |
 | `GOTENBERG_URL` | 可选；`.doc`、`.rtf`、`.odt` 交给 Gotenberg 转为 PDF。Compose 为 API 容器设为 `http://gotenberg:3000`，本机 `uvicorn` 或命令行用 `http://127.0.0.1:3000` |
 | `SOFFICE_PATH` | 可选；未配置 Gotenberg 时使用本机 LibreOffice `soffice`，为空时从 PATH 查找 |
 | `CONVERSION_TIMEOUT_SECONDS` | 单个文档格式转换超时，默认 120；Compose 中 Gotenberg 自身超时设为 110 秒 |
@@ -114,14 +76,20 @@ Access Token 默认 30 分钟，Refresh Token 默认 7 天。刷新沿用同一�
 | `JOB_LEASE_SECONDS` | 任务租约，默认 60 秒（至少 20）；执行中每 5 秒续租，worker 退出后租约到期，任务由其他 worker 接手 |
 | `AUTO_APPROVE_PARSED` | `true`：完整解析的版本自动向量化；`false` 时须调用批准接口。含待 OCR 图片的版本总是需要人工批准 |
 | `DASHSCOPE_API_KEY` | 向量化密钥；worker 用于入库，API 用于检索时向量化问题 |
+| `DEEPSEEK_API_KEY`、`CHAT_MODEL`、`CHAT_BASE_URL` | 由 `dsh` 使用的提供方密钥、模型和地址，默认连接 `https://api.deepseek.com` 的 `deepseek-flash` |
+| `CHAT_DSH_TOKEN` | FastAPI 和 `dsh` 共享的私有令牌，由初始化脚本生成 |
+| `CHAT_DSH_CONTEXT_WINDOW` | `dsh` 的上下文窗口，默认 32768 tokens |
+| `CHAT_DSH_URL` | 私有桥接地址，Compose 默认为 `http://dsh:8091`，本机 FastAPI 默认为 `http://127.0.0.1:8091` |
 | `EMBEDDING_BASE_URL`、`EMBEDDING_MODEL`、`EMBEDDING_DIMENSION` | 默认北京地域、`text-embedding-v4`、1024 维；离线入库与在线查询必须一致，更换后写入新的 Milvus 集合 |
 | `MILVUS_URI`、`MILVUS_PORT` | 向量库地址（容器内 `http://milvus:19530`）与 Compose 对外端口 |
 
-管理员配置全部未设置时跳过初始化，部分配置会拒绝启动。不提供默认管理员凭据，初始化脚本也不生成管理员密码。已有管理员时直接跳过创建，保留当前用户名、邮箱、密码和状态；管理员修改个人资料后，原初始化配置不会阻止重启。仅在尚无管理员时使用配置创建首个管理员，不提升已有普通用户。
+首次生成开发配置时，脚本会写入用户名 `admin`、邮箱 `admin@example.com` 和随机 `ADMIN_PASSWORD`。数据库尚无管理员时，API 会在启动时创建此账号。
+
+要通过重新部署修改已有管理员的密码，将 `ADMIN_USERNAME` 设为该账号当前的用户名，再更新 `ADMIN_PASSWORD`。API 启动时会比对密码，只在不同时更新并使该账号的旧会话失效。`ADMIN_EMAIL` 用于创建首个管理员，三项留空可关闭这项启动行为。密码须为 8–128 个字符，并同时包含英文字母和数字。
 
 ## 文档解析
 
-`app/rag/parsing/` 将 PDF、Word（.docx/.doc）、RTF、ODT、TXT/Markdown 和图片（PNG/JPG/TIFF 等）解析为带来源位置的文本切片，结果暂不入库。接口和命令行是两个入口，共用 `services/document_parsing.py` 与 `schemas/document.py` 中的参数校验，输出格式相同：
+`app/rag/parsing/` 将 PDF、Word（.docx/.doc）、RTF、ODT、TXT/Markdown 和图片（PNG/JPG/TIFF 等）解析为带来源位置的文本切片，结果暂不入库。接口和命令行是两个入口，共用 `services/document_parsing.py` 与 `app/rag/parsing/parameters.py` 中的参数校验，输出格式相同：
 
 ```text
 POST /admin/documents/parse ─┐
@@ -163,7 +131,7 @@ uv run python scripts/parse_document.py <文件> --output result.json
 - 清洗只对康熙部首、兼容汉字和全角字母数字做 NFKC，保留中文全角标点；去除汉字间排版空格、页码、过半页面重复的页眉页脚及重复内容。
 - 切片默认自动选择：含两条以上“第X条”时按章 / 节 / 条，否则含两项以上“一、”时按一级序号，其余按标题和 800 字长度（100 字重叠）。行首“第七条规定的……”等引用不会被当作新条；超长条文按句拆分并以 `part` / `part_count` 标记。
 
-输出包含文件 SHA-256、状态、切片（章、节、条号或序号、标题路径、PDF 页码范围、内容来源 text/ocr）与统计、警告；未要求文本块时 `blocks` 为 null。PDF 页码为 1 起算的物理页序号，Word 与纯文本没有页码。解析任务后台化、入库与向量化属于后续阶段。
+输出包含文件 SHA-256、状态、切片（章、节、条号或序号、标题路径、PDF 页码范围、内容来源 text/ocr）与统计、警告；未要求文本块时 `blocks` 为 null。PDF 页码为 1 起算的物理页序号，Word 与纯文本没有页码。需持久化并建立索引时，使用 `POST /admin/imports` 交由 worker 处理。
 
 ```text
 app/rag/parsing/
@@ -188,18 +156,20 @@ app/rag/parsing/
 ## 代码组织
 
 - `api/`：请求模型绑定、认证依赖、响应和路由。
-- `services/`：注册、登录、刷新、退出的业务规则及事务边界；`document_parsing.py` 为接口、命令行与 worker 共用的解析服务；`document_imports.py`（导入、重试、重新解析、删除）与 `document_library.py`（制度、版本、切片、任务查询与原件读取）为入库管理，`document_publishing.py` 负责发布与下架，错误码集中在 `document_errors.py`。
+- `services/`：注册、登录、刷新、退出的业务规则及事务边界；`document_parsing.py` 为解析预览接口和 CLI 共用的服务；`document_imports.py`（导入、重试、重新解析、删除）与 `document_library.py`（制度、版本、切片、任务查询与原件读取）为入库管理，`document_publishing.py` 负责发布与下架，错误码集中在 `document_errors.py`。
 - `repositories/`、`models/`、`db/`：数据库访问、表模型和连接生命周期；`db/engine.py` 提供不读取配置的连接工厂，供 worker 使用。
 - `security/`：线程池中的 Argon2 运算、JWT 签发和校验。
 - `cache/`：失败计数、会话及令牌轮换的原子操作。
 - `core/`、`middleware/`：配置、统一错误、JSON 日志和请求追踪。
 - `rag/parsing/`：文档解析、OCR、清洗与切片；Parser、OCR、Chunker 各占一个目录，按基类实现并登记，结构见上文。
-- `worker/`：后台任务。`runtime.py` 负责认领（`FOR UPDATE SKIP LOCKED`，连接使用 READ COMMITTED）、续租、进度、重试与失败处理；`parse.py` 为解析任务。设计与状态流转见[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)第 7 节。
+- `worker/`：后台任务。`runtime.py` 负责认领（`FOR UPDATE SKIP LOCKED`，连接使用 READ COMMITTED）、续租、进度、重试与失败处理；`parse.py` 和 `index.py` 使用默认入库方案处理解析与向量化，`pipeline.py` 处理附加方案。设计与状态流转见[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)第 7 节。
 - `rag/indexing/`：向量化（`EmbeddingProvider`，默认 DashScope）、向量库（`VectorStore`，默认 Milvus，含 BM25 稀疏向量）与向量化文本规则；worker 的 `index.py` 为索引任务。
-- `rag/retrieval/`：混合检索（两路检索与 RRF 融合）；`services/search.py` 限定已发布版本并补全引用信息。
+- `rag/pipelines/` 组合解析、索引与检索。API 内检索和问答共用进程内缓存的注册表，worker 按进程装配入库方案。
+- `rag/retrieval/` 提供文本混合检索和视觉检索。`services/search.py` 限定已发布版本并补全引用信息。
+- `agent/` 与 `services/chat_sessions.py` 管理问答提示词、制度工具、引用校验和业务会话。每轮上下文来自 MySQL 中已交付的问答。`dsh/` 执行模型与工具循环并持久化运行日志。
 - `storage/`：对象存储接口 `ObjectStorage` 与 S3 API 实现，对象键规则在 `storage/keys.py`。方法为同步调用（API 中经线程池调用）；对象不存在时抛出 `FileNotFoundError`，存储不可用返回 503 `STORAGE_UNAVAILABLE`。
 
-MySQL 保存用户，以及入库所需的制度、版本、切片和导入任务（表结构见[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)第 6 节）；Redis 保存带有效期的会话状态，不保存原始令牌。会话创建、刷新轮换与退出分别通过 Lua 脚本原子执行。退出只撤销当前会话，不影响该账号的其他登录。
+MySQL 保存用户、问答会话、问答事件，以及入库所需的制度、版本、切片和导入任务。入库表结构见[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)第 6 节。Redis 保存带有效期的登录会话状态。登录会话创建、刷新轮换与退出分别通过 Lua 脚本原子执行。
 
 会话命名空间为 `finoracle:v2:auth:*`，会话按有效期自动过期。
 
@@ -226,6 +196,8 @@ uv run python -m tests.integration
 uv run python -m tests.integration --fresh-install
 ```
 
+只验证无外部密钥的流程时，可在测试环境以 `AUTO_APPROVE_PARSED=false` 启动 worker。导入检查会在解析完成后继续，依赖 DashScope 的向量化和检索检查会跳过。
+
 检查覆盖真实 HTTP 认证流程、事务回滚、Redis 回复丢失、刷新重放、并发轮换、退出登录与会话隔离，以及对象存储的读写、自动建桶和凭据错误（在临时桶中进行，结束后删除），入库表的数据库约束，worker 的并发认领与租约接管，和经 Compose 中 worker 执行的真实解析任务（.doc 经 Gotenberg 转换、损坏文件直接失败），以及通过 API 的完整入库流程（上传、解析、读取切片与原件、重复上传、重新解析、删除）；最后一项检查经 DashScope 与 Milvus 完成自动批准、向量化、BM25 与向量检索、发布替换、下架与重新上线，以及经 API 的混合检索（未发布不可检索、两路名次、制度范围、下架后立即不可检索）；这两项需要有效的 `DASHSCOPE_API_KEY`，未设置时跳过。每项使用唯一测试数据并清理自己的记录。首次安装检查创建临时 Compose 项目和卷，只删除自己创建的临时资源。
 
 Postman Collection 与空白凭据环境位于 [postman/](postman/)。仅在可丢弃本地环境显式开启后运行，默认管理员流程关闭；账号与令牌串联说明见 [API 交接](../docs/backend-handoff.md)。
@@ -238,6 +210,6 @@ uv run python scripts/benchmark.py --allow-disposable-users --samples 20 --warmu
 
 可选管理员读写测量通过 `BENCHMARK_ADMIN_IDENTIFIER` 与 `BENCHMARK_ADMIN_PASSWORD` 环境变量启用，仅操作本轮生成用户。输出每接口样本数、P50/P95 和环境信息；500ms 为目标，实际性能以测量报告为准。添加 `--max-p95-ms 500` 可在超阈值时返回失败。
 
-## 下一阶段
+## 相关文档
 
-用户资料修改、管理员初始化与用户管理由本次后端交付覆盖；资料编辑及管理员页面由前端团队接入。文档解析已提供离线命令（见上文）；文档入库按[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)分步实施，目前完成对象存储、入库数据表、后台解析与向量化任务、管理端入库与发布接口，以及混合检索接口；重排、大模型生成与会话尚未实现。配套认证前端运行方式见[前端说明](../frontend/README.md)，后端契约见 [API 交接](../docs/backend-handoff.md)，阶段背景见[基础需求](../docs/superpowers/specs/2026-09-20-backend-foundation-prd.md)。
+前端运行见[前端说明](../frontend/README.md)。请求、响应及错误处理见 [API 交接](../docs/backend-handoff.md)。问答链路见[问答架构](../docs/superpowers/specs/2026-11-19-llm-architecture-design.md)。

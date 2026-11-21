@@ -1,3 +1,4 @@
+import { formatDate } from './dates'
 import type {
   DocumentVersion,
   ImportJob,
@@ -12,7 +13,7 @@ import type {
   VersionStatus,
 } from './types'
 
-export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 export const ACCEPTED_TYPES = [
   'pdf',
   'docx',
@@ -55,7 +56,7 @@ export const JOB_KIND_LABELS: Record<JobKind, string> = {
   cleanup: '清理',
   pipeline: '方案入库',
 }
-export const STAGE_LABELS: Record<string, string> = {
+const STAGE_LABELS: Record<string, string> = {
   downloading: '读取原件',
   converting: '格式转换',
   parsing: '解析文本',
@@ -190,7 +191,7 @@ export function versionName(version: { version_note: string | null; created_at: 
   return version.version_note || `${formatDate(version.created_at)} 上传的版本`
 }
 
-export type StepState = 'done' | 'current' | 'failed' | 'pending'
+type StepState = 'done' | 'current' | 'failed' | 'pending'
 export interface PipelineStep {
   label: string
   state: StepState
@@ -250,32 +251,7 @@ export function formatBytes(value: number): string {
   return `${(value / 1024 / 1024).toFixed(1)} MB`
 }
 
-export function formatDate(value: string | null): string {
-  if (!value) return '未填写'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '未填写'
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date)
-}
-
-export function formatDateTime(value: string | null): string {
-  if (!value) return '尚无记录'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '尚无记录'
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(date)
-}
-
-export function fileExtension(name: string): string {
+function fileExtension(name: string): string {
   const index = name.lastIndexOf('.')
   return index < 0 ? '' : name.slice(index + 1).toLowerCase()
 }

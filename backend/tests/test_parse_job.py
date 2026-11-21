@@ -27,7 +27,7 @@ def make_worker(env, handler=None):
     return Worker(
         env.sessions,
         env.storage,
-        [handler or ParseHandler(SETTINGS)],
+        [handler or ParseHandler(parse_worker.StructuredParser(SETTINGS))],
         worker_id="worker-1",
         heartbeat_seconds=0.05,
         clock=env.clock,
@@ -116,7 +116,9 @@ def test_legacy_document_is_converted_and_the_pdf_is_kept(tmp_path):
                 ["第二条 适用范围。"],
             ]
         )
-        handler = ParseHandler(SETTINGS, converter_factory=lambda settings: converter)
+        handler = ParseHandler(
+            parse_worker.StructuredParser(SETTINGS, lambda settings: converter)
+        )
         await make_worker(env, handler).run_once()
 
         pdf_key = converted_pdf_key(ids.document_id, ids.version_id)
@@ -210,7 +212,7 @@ def test_storage_outage_is_retried_and_the_version_stays_in_progress(tmp_path):
 def test_parse_stops_when_the_version_was_deleted(tmp_path):
     async def scenario(env):
         ids = await seed(env, content=REGULATION)
-        handler = ParseHandler(SETTINGS)
+        handler = ParseHandler(parse_worker.StructuredParser(SETTINGS))
         claimed = ClaimedJob(ids.job_id, ids.version_id, "parse", 1, 3, None)
         async with env.sessions() as session, session.begin():
             job = await session.get(ImportJob, ids.job_id)
@@ -234,7 +236,9 @@ def test_old_parse_attempt_cannot_overwrite_objects_after_takeover(
         content = OLE2_HEADER + b"word" if file_type == "doc" else REGULATION
         ids = await seed(env, file_name=f"办法.{file_type}", content=content)
         converter = FakeConverter([["第一条 规范经营行为。", "第二条 适用范围。"]])
-        handler = ParseHandler(SETTINGS, converter_factory=lambda settings: converter)
+        handler = ParseHandler(
+            parse_worker.StructuredParser(SETTINGS, lambda settings: converter)
+        )
         old = make_worker(env, handler)
         old.heartbeat_seconds = 5
         new = Worker(

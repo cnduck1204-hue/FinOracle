@@ -21,7 +21,7 @@ from app.rag.indexing.page_store import PageVectorStore
 from app.rag.indexing.text_index import TextIndexer, plain_entries
 from app.rag.indexing.visual_embedding import VisualEmbeddingProvider
 from app.rag.indexing.visual_index import StoredPageIndexer, VisualIndexer
-from app.rag.pipelines.base import IngestPipeline, Pipeline, RetrievalPipeline
+from app.rag.pipelines.base import IngestPipeline, Pipeline
 from app.rag.pipelines.errors import pipeline_not_found
 from app.rag.pipelines.page_images import PageImageParser
 from app.rag.pipelines.pdf_blocks import PdfBlockParser
@@ -62,17 +62,6 @@ class PipelineRegistry:
         if ingest is None:
             raise pipeline_not_found()
         return ingest
-
-    def with_default_retrieval(
-        self, retrieval: RetrievalPipeline
-    ) -> "PipelineRegistry":
-        pipelines = [
-            pipeline.with_retrieval(retrieval)
-            if pipeline.name == self._default
-            else pipeline
-            for pipeline in self._pipelines.values()
-        ]
-        return PipelineRegistry(pipelines, default=self._default)
 
 
 def build_pipelines(

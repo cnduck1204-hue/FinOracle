@@ -96,8 +96,9 @@ async def check_documents() -> None:
             assert stored.parse_warnings == ["第 3 页待 OCR"]
             assert stored.published_date == date(2023, 7, 20)
             assert stored.validity_status == "unknown"
-            found = await DocumentRepository(session).get_by_external_id(f"it_{token}")
-            assert found.id == document.id and found.title == "证券公司风险处置条例"
+            found = await DocumentRepository(session).get(document.id)
+            assert found.external_id == f"it_{token}"
+            assert found.title == "证券公司风险处置条例"
         print("PASS: Documents and versions round-trip JSON, dates and defaults")
 
         async def duplicate_file(session):

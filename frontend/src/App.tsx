@@ -1,7 +1,7 @@
 import { LoaderCircle, RotateCw, ShieldCheck, WifiOff } from 'lucide-react'
+import { lazy, Suspense } from 'react'
 import { Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './auth/AuthProvider'
-import { AppLayout } from './components/AppLayout'
 import { Brand } from './components/Brand'
 import { AccountPage } from './pages/AccountPage'
 import { AdminDocumentsPage } from './pages/AdminDocumentsPage'
@@ -10,10 +10,27 @@ import { AdminImportDetailPage } from './pages/AdminImportDetailPage'
 import { AdminImportNewPage } from './pages/AdminImportNewPage'
 import { AdminImportsPage } from './pages/AdminImportsPage'
 import { AdminUsersPage } from './pages/AdminUsersPage'
-import { AuthPage } from './pages/AuthPage'
 import { ComingSoonPage } from './pages/ComingSoonPage'
 import { SearchPage } from './pages/SearchPage'
-import { WorkspacePage } from './pages/WorkspacePage'
+
+const WorkspacePage = lazy(() =>
+  import('./pages/WorkspacePage').then(({ WorkspacePage }) => ({ default: WorkspacePage })),
+)
+
+function WorkspaceRoute() {
+  return (
+    <Suspense
+      fallback={
+        <main className="recovery-page">
+          <Brand />
+          <p role="status">正在加载工作台…</p>
+        </main>
+      }
+    >
+      <WorkspacePage />
+    </Suspense>
+  )
+}
 
 function RequireSession() {
   const { user, hasSession } = useAuth()
@@ -21,7 +38,14 @@ function RequireSession() {
   return user && hasSession ? (
     <Outlet />
   ) : (
-    <Navigate to="/login" replace state={{ from: location.pathname }} />
+    <Navigate
+      to="/chat"
+      replace
+      state={{
+        authMode: 'login',
+        from: { pathname: location.pathname, search: location.search, hash: location.hash },
+      }}
+    />
   )
 }
 
@@ -31,10 +55,12 @@ function RequireAdmin() {
     <Outlet />
   ) : (
     <section className="empty-page">
-      <ShieldCheck size={30} strokeWidth={1.4} aria-hidden="true" />
+      <div className="empty-symbol">
+        <ShieldCheck size={26} strokeWidth={1.6} aria-hidden="true" />
+      </div>
       <h1>没有访问权限</h1>
       <p>此页面仅向管理员开放。</p>
-      <Link to="/chat" className="cut-button button-dark">
+      <Link to="/chat" className="btn btn-primary">
         返回工作台
       </Link>
     </section>
@@ -42,7 +68,7 @@ function RequireAdmin() {
 }
 
 export function App() {
-  const { boot, bootError, retry, returnToLogin } = useAuth()
+  const { user, boot, bootError, retry, returnToLogin } = useAuth()
   if (boot !== 'ready')
     return (
       <main className="recovery-page">
@@ -50,31 +76,38 @@ export function App() {
         {boot === 'loading' ? (
           <>
             <LoaderCircle size={24} className="spinner" />
-            <span className="eyebrow">正在恢复你的工作空间</span>
+            <span className="recovery-label">正在恢复你的工作空间…</span>
           </>
         ) : (
           <>
-            <WifiOff size={30} strokeWidth={1.4} />
+            <WifiOff size={28} strokeWidth={1.5} />
             <h1>连接暂时中断。</h1>
             <p>{bootError} 我们保留了你的登录信息，可以稍后重试。</p>
-            <button className="cut-button button-dark" onClick={retry}>
+            <button className="btn btn-primary" onClick={retry}>
               <RotateCw size={15} />
               重新连接
             </button>
-            <button className="text-button" onClick={returnToLogin}>
+            <Link to="/login" replace className="text-button" onClick={returnToLogin}>
               返回登录
-            </button>
+            </Link>
           </>
         )}
       </main>
     )
   return (
     <Routes>
-      <Route path="/login" element={<AuthPage key="login" mode="login" />} />
-      <Route path="/register" element={<AuthPage key="register" mode="register" />} />
-      <Route element={<RequireSession />}>
-        <Route element={<AppLayout />}>
-          <Route path="/chat" element={<WorkspacePage />} />
+      <Route
+        path="/login"
+        element={<Navigate to="/chat" replace state={user ? null : { authMode: 'login' }} />}
+      />
+      <Route
+        path="/register"
+        element={<Navigate to="/chat" replace state={user ? null : { authMode: 'register' }} />}
+      />
+      <Route element={<WorkspaceRoute />}>
+        <Route path="/chat" element={null} />
+        <Route element={<RequireSession />}>
+          <Route path="/history" element={null} />
           <Route path="/account" element={<AccountPage />} />
           <Route element={<RequireAdmin />}>
             <Route path="/admin/users" element={<AdminUsersPage />} />
@@ -89,7 +122,6 @@ export function App() {
           </Route>
           <Route path="/library" element={<ComingSoonPage module="library" />} />
           <Route path="/search" element={<SearchPage />} />
-          <Route path="/history" element={<ComingSoonPage module="history" />} />
           <Route path="/favorites" element={<ComingSoonPage module="favorites" />} />
         </Route>
       </Route>

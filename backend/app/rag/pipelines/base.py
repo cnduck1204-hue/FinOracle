@@ -9,7 +9,7 @@
 
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
@@ -106,21 +106,3 @@ class Pipeline:
             raise ValueError(
                 f"Pipeline {self.name} 的入库部分缺少通道：{sorted(missing)}"
             )
-
-    def with_retrieval(self, retrieval: RetrievalPipeline) -> "Pipeline":
-        return replace(self, retrieval=retrieval)
-
-
-__all__ = [
-    "IndexTarget",
-    "IngestRun",
-    "PageUnits",
-    "ParsedUnits",
-    "SourceFile",
-    "StoredUnit",
-    "UnitParser",
-    "UnitIndexer",
-    "IngestPipeline",
-    "RetrievalPipeline",
-    "Pipeline",
-]

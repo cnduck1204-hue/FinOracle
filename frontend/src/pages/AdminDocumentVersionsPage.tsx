@@ -3,8 +3,8 @@ import { ArrowLeft, Layers, LoaderCircle, Pencil, Plus, RotateCw } from 'lucide-
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { Field } from '../components/IngestionForms'
+import { Dialog } from '../components/Dialog'
 import {
-  Dialog,
   JobProgress,
   JobStatusTag,
   LoadFailure,
@@ -16,10 +16,10 @@ import { Notice } from '../components/Notice'
 import { VersionActions } from '../components/VersionActions'
 import { VersionPipelines } from '../components/VersionPipelines'
 import { errorMessage } from '../lib/api'
+import { formatDateTime } from '../lib/dates'
 import {
   PARSE_STATUS_LABELS,
   formatBytes,
-  formatDateTime,
   isJobActive,
   isVersionBusy,
   versionName,
@@ -60,8 +60,8 @@ function EditDocument({
   }
 
   return (
-    <Dialog eyebrow="EDIT DOCUMENT" title="修改制度信息" busy={busy} onClose={onClose}>
-      <form onSubmit={(event) => void save(event)}>
+    <Dialog title="修改制度信息" busy={busy} onClose={onClose}>
+      <form className="auth-form" onSubmit={(event) => void save(event)}>
         <Field id="edit-title" label="制度标题" required value={title} onChange={setTitle} />
         <Field id="edit-issuer" label="发文机构" value={issuer} onChange={setIssuer} />
         {Boolean(error) && (
@@ -70,11 +70,11 @@ function EditDocument({
           </Notice>
         )}
         <div className="profile-actions">
-          <button className="cut-button button-dark" type="submit" disabled={busy || !title.trim()}>
+          <button className="btn btn-primary" type="submit" disabled={busy || !title.trim()}>
             {busy && <LoaderCircle size={14} className="spinner" />}
             保存
           </button>
-          <button type="button" className="cut-button" disabled={busy} onClick={onClose}>
+          <button type="button" className="btn" disabled={busy} onClick={onClose}>
             取消
           </button>
         </div>
@@ -127,18 +127,18 @@ export function AdminDocumentVersionsPage() {
       {data && (
         <>
           <header className="page-heading">
-            <div>
-              <span className="eyebrow">// VERSIONS</span>
+            <div className="page-heading-text">
+              <span className="page-kicker">Document Versions</span>
               <h1>{data.document.title}</h1>
               <p>{data.document.issuer || '未填写发文机构'}</p>
             </div>
             <div className="heading-actions">
-              <button type="button" className="cut-button" onClick={() => setEditing(true)}>
+              <button type="button" className="btn" onClick={() => setEditing(true)}>
                 <Pencil size={14} aria-hidden="true" />
                 修改信息
               </button>
               <Link
-                className="cut-button button-primary"
+                className="btn btn-primary"
                 to={`/admin/imports/new?document_id=${data.document.id}`}
               >
                 <Plus size={15} aria-hidden="true" />
@@ -165,12 +165,17 @@ export function AdminDocumentVersionsPage() {
                 刷新
               </button>
             </div>
-            <ul className="version-list">
-              {data.versions.map((version) => (
+            <ol className="version-list" role="list">
+              {data.versions.map((version, index) => (
                 <li key={version.id} className="version-card">
                   <div className="version-card-head">
                     <div>
-                      <h3>{versionName(version)}</h3>
+                      <h3>
+                        <span className="version-index" aria-hidden="true">
+                          {String(index + 1).padStart(2, '0')}
+                        </span>
+                        {versionName(version)}
+                      </h3>
                       <small>
                         {version.file_name} · {formatBytes(version.size_bytes)}
                       </small>
@@ -189,7 +194,7 @@ export function AdminDocumentVersionsPage() {
                       <dt>解析结果</dt>
                       <dd>
                         {version.parse_status
-                          ? `${PARSE_STATUS_LABELS[version.parse_status]} · ${version.chunk_count} 个切片`
+                          ? `${PARSE_STATUS_LABELS[version.parse_status] ?? version.parse_status} · ${version.chunk_count} 个切片`
                           : '尚未完成'}
                       </dd>
                     </div>
@@ -232,7 +237,7 @@ export function AdminDocumentVersionsPage() {
                   </div>
                 </li>
               ))}
-            </ul>
+            </ol>
             {!data.versions.length && <div className="admin-state">这份制度还没有版本。</div>}
           </section>
 

@@ -1,6 +1,6 @@
 # 文档入库方案（2026-11-05）
 
-状态：已确认（2026-11-05），按第 11 节的顺序实施；选型结论见第 12 节。
+本文保留 2026-11-05 入库设计及后续检索方案的选型背景。运行与接口以[后端说明](../../../backend/README.md)和 [API 交接](../../backend-handoff.md)为准。
 
 范围：画板 B 区（知识库构建）的入库部分，以及它与已实现的 A 区（解析 / OCR / 切片）的衔接。C 区（在线问答）只写它对入库的要求。
 
@@ -382,7 +382,7 @@ C 阶段的第一部分，到检索为止，尚未包含重排与大模型生成
 - **查询与文档的区分**：DashScope 兼容接口虽然接受 `text_type`，但实测查询与文档的向量完全相同（余弦 1.0），因此不区分，已入库的向量无需重建。
 - **错误**：向量化服务不可用、密钥被拒、向量库不可用时，统一返回 503 `SEARCH_UNAVAILABLE`，具体原因只记日志；日志只记录耗时与数量，不记录用户的问题。
 - **实测**：在真实 DashScope 与 Milvus 上，用切片原文查询，两路都把该切片排在第一，经 HTTP 的完整请求中位数约 330 ms。
-- **尚未实现**：重排（Rerank）、依据是否充分的判断、大模型生成与引用标注、会话保存。
+- 问答生成、引用校验与会话持久化由[问答架构](../../superpowers/specs/2026-11-19-llm-architecture-design.md)描述。
 
 ## 9B 可组合的检索方案（2026-11-10，代码在 `app/rag/pipelines/`）
 
@@ -395,6 +395,7 @@ C 阶段的第一部分，到检索为止，尚未包含重排与大模型生成
 | --- | --- | --- | --- | --- |
 | `structured-hybrid`（默认） | `structured` | 多格式、OCR、按条文切片 | dense + BM25 | 条号、页码 |
 | `pdf-block-visual` | `pdf-block` | PyMuPDF 文本块与表格，不做 OCR | dense + BM25 + 页面视觉 | 页码、bbox |
+| `page-image-visual` | `page-image` | 支持的文件渲染为页图 | 页面视觉 | 页码、页图 |
 
 - **默认方案**走版本自身的生命周期，行为不变。**附加方案**由 `POST /admin/versions/{id}/pipelines/{name}` 按需建立（版本须为 ready 或 published），状态记在 `version_indexes`，失败不影响版本和默认方案。任务类型为 `pipeline`，可用原重试接口重试。
 - **检索**：`POST /search` 的 `pipeline` 字段选择方案，只检索已发布且该方案索引就绪的版本。`GET /search/pipelines` 列出方案。
@@ -404,16 +405,7 @@ C 阶段的第一部分，到检索为止，尚未包含重排与大模型生成
 
 ## 10 外部数据导入
 
-脚本 `scripts/import_release.py <交付目录>`：
-
-1. 先确认 `processed/quality_report.json` 的 status 为 completed，只导入 `approved_for_integration=true` 的文档。
-2. 对每份文档：按 `external_id=doc_id` 查找制度，不存在就新建。
-3. 按 file_path 读取 PDF，核对 sha256 后上传到 MinIO，新建版本。版本元数据从 release_documents.json 映射。
-4. 切片直接写入 document_chunks：external_id 取 chunk_id，ordinal 按原顺序。parser_version 记为 `release:{schema_version}`，状态置为 parsed。
-5. 带 `--approve` 参数时，直接为这些版本创建索引任务。
-
-- 重复运行是幂等的：同一制度下已有相同 sha256 的版本就跳过。
-- 不合并 feat/data-collection 分支（它与 main 没有共同历史），只读取它的交付文件。
+发布数据批量导入停留在设计阶段。当前入口为管理员上传 `POST /admin/imports`。历史制度和切片数据可继续携带外部 ID。
 
 ## 11 实施顺序
 
@@ -422,7 +414,6 @@ C 阶段的第一部分，到检索为止，尚未包含重排与大模型生成
 3. **任务框架与解析任务**（2026-11-05 已完成）：认领、续租、重试；实现 parse 任务和 progress 回调；转换后的 PDF 写入对象存储；Compose 增加 worker 服务。另加迁移 `e43a1cf1d3d5`，为执行中任务的租约建索引。
 4. **管理 API**（2026-11-05 已完成）：导入、任务、制度、版本、切片、原文、重试、重新解析和删除。批准、发布、下架移到第 5 步。
 5. **向量化与发布**（2026-11-05 已完成）：DashScope 与 Milvus 两个 Provider；解析后自动批准（可关闭）、批准、发布、下架；下架、替换与删除时清理向量。Compose 增加 Milvus（单容器，内嵌 etcd、本地存储）。
-6. **release 数据导入脚本**。
 
 第 1–4 步不依赖向量库和 Embedding；第 5 步按第 12 节的选型实现。
 

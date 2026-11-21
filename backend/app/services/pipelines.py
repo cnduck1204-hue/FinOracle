@@ -5,16 +5,13 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utc_now
-from app.models.document import DEFAULT_INGEST, DocumentVersion
+from app.models.document import DocumentVersion
 from app.models.import_job import ImportJob
 from app.models.user import User
-from app.rag.pipelines import (
-    Pipeline,
-    PipelineRegistry,
-    SourceFile,
-    pipeline_unavailable,
-    source_unsupported,
-)
+from app.rag import DEFAULT_INGEST
+from app.rag.models import SourceFile
+from app.rag.parsing.errors import source_unsupported
+from app.rag.pipelines import Pipeline, PipelineRegistry, pipeline_unavailable
 from app.repositories.documents import (
     DocumentVersionRepository,
     VersionIndexRepository,

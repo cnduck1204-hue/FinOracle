@@ -21,9 +21,12 @@ async function seed(request: APIRequestContext) {
   return name
 }
 async function login(page: Page, name: string, destination = 'chat') {
-  await page.getByLabel('用户名或邮箱', { exact: true }).fill(name)
-  await page.getByLabel('密码', { exact: true }).fill(password)
-  await page.getByRole('button', { name: '进入工作台', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '欢迎回来。' })
+  await dialog.getByLabel('用户名或邮箱', { exact: true }).fill(name)
+  await dialog.getByLabel('密码', { exact: true }).fill(password)
+  await dialog.getByRole('button', { name: '进入工作台', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('link', { name: '打开我的账号', exact: true })).toBeVisible()
   await expect(page).toHaveURL(new RegExp(`/${destination}$`))
 }
 
@@ -44,7 +47,64 @@ test.afterAll(() => {
   )
 })
 
-test('real registration, login, one-flight restore, draft, logout and sign-in again', async ({
+test('a guest can start typing on the home page and sign in without losing the question', async ({
+  page,
+  request,
+}) => {
+  const name = await seed(request)
+  const protectedRequests: string[] = []
+  page.on('request', (entry) => {
+    if (/\/api\/v1\/(chat|search|admin)(\/|\?|$)/.test(entry.url()))
+      protectedRequests.push(entry.url())
+  })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '查制度，核出处' })).toBeVisible()
+  const dialog = page.getByRole('dialog', { name: '欢迎回来。' })
+  await expect(dialog).toHaveCount(0)
+  for (const name of ['全文检索', '查看全部']) {
+    await page.getByRole('link', { name, exact: true }).click()
+    await expect(dialog).toBeVisible()
+    await expect(page).toHaveURL(/\/chat$/)
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+  }
+  const question = page.getByLabel('你想了解什么？')
+  await question.fill('访客输入的制度问题')
+  await question.press('Enter')
+  await expect(dialog).toBeVisible()
+  await expect(page).toHaveURL(/\/chat$/)
+  expect(protectedRequests).toEqual([])
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(question).toHaveValue('访客输入的制度问题')
+  await page.getByRole('button', { name: '发送问题' }).click()
+  await expect(dialog).toBeVisible()
+  await login(page, name)
+  await expect(dialog).toHaveCount(0)
+  await expect(question).toHaveValue('访客输入的制度问题')
+  await expect(page.getByRole('button', { name: '发送问题' })).toBeEnabled()
+  await page.reload()
+  await expect(question).toHaveValue('访客输入的制度问题')
+
+  const newSession = page.getByRole('button', { name: '新会话', exact: true })
+  await question.fill('')
+  await newSession.click()
+  await question.fill('已登录时保存的新会话草稿')
+  await page.getByRole('link', { name: '打开我的账号', exact: true }).click()
+  await page.getByRole('button', { name: '退出登录', exact: true }).click()
+  await expect(dialog).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await question.fill('再次登录前输入的问题')
+  await question.press('Enter')
+  await login(page, name)
+  await expect(question).toHaveValue('再次登录前输入的问题')
+  await question.fill('')
+  await newSession.click()
+  await expect(question).toHaveValue('已登录时保存的新会话草稿')
+})
+
+test('real registration, login, automatic draft restore, logout and sign-in again', async ({
   page,
 }) => {
   const errors: string[] = []
@@ -57,7 +117,7 @@ test('real registration, login, one-flight restore, draft, logout and sign-in ag
     fullPage: true,
     animations: 'disabled',
   })
-  await page.getByRole('link', { name: /注册账号/ }).click()
+  await page.getByRole('button', { name: '注册账号' }).click()
   await page.getByLabel('用户名', { exact: true }).fill(name)
   await page.getByLabel('邮箱', { exact: true }).fill(`${name}@example.com`)
   await page.getByLabel('密码', { exact: true }).fill(password)
@@ -66,16 +126,16 @@ test('real registration, login, one-flight restore, draft, logout and sign-in ag
   await expect(page.getByText('账号已创建，请使用新账号登录。')).toBeVisible()
   await login(page, name)
   await page.getByRole('button', { name: /先厘清制度范围/ }).click()
-  await page.getByLabel('你想了解什么？').fill('我想梳理业务场景中的制度适用范围。')
-  await page.getByRole('button', { name: '保存问题草稿' }).click()
-  await expect(page.getByRole('status')).toContainText('草稿已保存在当前标签页')
+  const question = page.getByLabel('你想了解什么？')
+  await question.fill('我想梳理业务场景中的制度适用范围。')
+  await expect(page.getByRole('button', { name: '保存问题草稿' })).toHaveCount(0)
   const refreshes: string[] = []
   page.on('request', (request) => {
     if (request.url().endsWith('/auth/refresh')) refreshes.push(request.url())
   })
   await page.reload()
   await expect(page).toHaveURL(/\/chat$/)
-  await expect(page.getByLabel('你想了解什么？')).toHaveValue('我想梳理业务场景中的制度适用范围。')
+  await expect(question).toHaveValue('我想梳理业务场景中的制度适用范围。')
   expect(refreshes).toHaveLength(1)
   await page.screenshot({
     path: 'test-results/preview-workspace.png',
@@ -100,7 +160,7 @@ test('real registration, login, one-flight restore, draft, logout and sign-in ag
   expect(errors).toEqual([])
 })
 
-test('validation and real incorrect-password response stay on the login page', async ({
+test('validation and real incorrect-password response stay in the sign-in dialog', async ({
   page,
   request,
 }) => {
@@ -112,7 +172,8 @@ test('validation and real incorrect-password response stay on the login page', a
   await page.getByLabel('密码', { exact: true }).fill('Wrong123')
   await page.getByRole('button', { name: '进入工作台' }).click()
   await expect(page.getByRole('alert')).toContainText('账号或密码错误')
-  await expect(page).toHaveURL(/\/login$/)
+  await expect(page).toHaveURL(/\/chat$/)
+  await expect(page.getByRole('dialog', { name: '欢迎回来。' })).toBeVisible()
 })
 
 for (const mobile of [false, true]) {
@@ -236,8 +297,10 @@ test('a copied tab requests a separate login without revoking the original sessi
     window.open('/chat', '_blank')
   })
   const copied = await opened
-  await expect(copied.getByRole('heading', { name: '欢迎回来。' })).toBeVisible()
+  await expect(copied.getByRole('heading', { name: '查制度，核出处' })).toBeVisible()
   await expect(copied.getByText('此登录正在另一个标签页使用，请在本页重新登录。')).toBeVisible()
+  await copied.getByRole('link', { name: '登录', exact: true }).click()
+  await expect(copied.getByRole('dialog', { name: '欢迎回来。' })).toBeVisible()
   await copied.close()
   await page.bringToFront()
   await page.reload()

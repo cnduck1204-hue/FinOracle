@@ -12,7 +12,7 @@ def main(argv: list[str] | None = None) -> int:
     from app.core.config import get_parsing_settings
     from app.core.exceptions import AppException
     from app.rag.parsing import CHUNKER_CHOICES, OCR_CHOICES
-    from app.schemas.document import ParseRequest
+    from app.rag.parsing.parameters import ParseRequest
     from app.services.document_parsing import parse_document
 
     defaults = ParseRequest()

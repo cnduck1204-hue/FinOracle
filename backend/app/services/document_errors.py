@@ -1,9 +1,6 @@
 """制度文档导入与管理的业务错误，错误码集中在此。解析本身的错误见 app.rag.parsing.errors。"""
 
 from app.core.exceptions import AppException
-from app.rag.parsing.errors import document_empty as document_empty
-from app.rag.parsing.errors import file_missing as file_missing
-from app.rag.parsing.errors import invalid_parse_options as invalid_parse_options
 
 
 def document_not_found() -> AppException:

@@ -1,11 +1,14 @@
 import { Component, StrictMode, type ErrorInfo, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
+import '@fontsource-variable/saira/standard.css'
 import { App } from './App'
 import { AuthProvider } from './auth/AuthProvider'
 import { Brand } from './components/Brand'
-import './styles.css'
-import './ingestion.css'
+import './styles/tokens.css'
+import './styles/base.css'
+import './styles/layout.css'
+import './styles/pages.css'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
@@ -22,7 +25,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean
           <Brand />
           <h1>页面暂时未能加载。</h1>
           <p>请重新载入页面后再试。你的账号资料不会受到影响。</p>
-          <button className="cut-button button-dark" onClick={() => window.location.reload()}>
+          <button className="btn btn-primary" onClick={() => window.location.reload()}>
             重新载入
           </button>
         </main>

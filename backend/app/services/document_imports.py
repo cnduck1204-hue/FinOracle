@@ -24,6 +24,7 @@ from app.rag.indexing import VectorStore
 from app.rag.parsing import SUPPORTED_TYPES, ParseOptions
 from app.rag.parsing.errors import file_too_large, invalid_document, unsupported_type
 from app.rag.parsing.options import MIB
+from app.rag.parsing.parameters import ParseOptionsInput
 from app.rag.pipelines import PipelineRegistry
 from app.repositories.documents import (
     DocumentRepository,
@@ -31,7 +32,6 @@ from app.repositories.documents import (
     VersionIndexRepository,
 )
 from app.repositories.import_jobs import ImportJobRepository
-from app.schemas.document import ParseOptionsInput
 from app.schemas.ingestion import ImportForm, JobResponse
 from app.services.document_errors import (
     document_not_found,

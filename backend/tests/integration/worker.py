@@ -3,9 +3,9 @@
 import asyncio
 import sys
 import tempfile
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -43,8 +43,8 @@ def host_storage() -> S3ObjectStorage:
 
 
 async def create_version(
-    document_ids: list, file_name: str, *, run_after=None, jobs: int = 1
-) -> tuple[DocumentVersion, list]:
+    document_ids: list, file_name: str, *, run_after: datetime, jobs: int = 1
+) -> tuple[DocumentVersion, list[UUID]]:
     file_type = file_name.rsplit(".", 1)[-1]
     async with database.SessionFactory() as session, session.begin():
         document = Document(title=f"集成测试 {uuid4().hex[:8]}")
@@ -64,14 +64,26 @@ async def create_version(
         await session.flush()
         version.object_key = original_key(document.id, version.id, file_type)
         created = [
-            ImportJob(
-                version_id=version.id, kind="parse", run_after=run_after or utc_now()
-            )
+            ImportJob(version_id=version.id, kind="parse", run_after=run_after)
             for _ in range(jobs)
         ]
         session.add_all(created)
         await session.flush()
         return version, [job.id for job in created]
+
+
+async def queue_parse_file(
+    document_ids: list, file_name: str, source: Path, storage: S3ObjectStorage
+) -> tuple[DocumentVersion, UUID]:
+    # Keep the fixture out of the claim queue until the original can be read.
+    version, (job_id,) = await create_version(
+        document_ids, file_name, run_after=utc_now() + timedelta(days=1)
+    )
+    await asyncio.to_thread(storage.put_file, version.object_key, source)
+    async with database.SessionFactory() as session, session.begin():
+        job = await session.get(ImportJob, job_id)
+        job.run_after = utc_now()
+    return version, job_id
 
 
 async def check_claiming(document_ids: list) -> None:
@@ -171,8 +183,9 @@ async def check_worker_container(document_ids: list, storage: S3ObjectStorage) -
     assert compose("exec", "-T", "worker", "python", "-c", check) == "ok"
     print("PASS: Worker runs as non-root without authentication secrets")
 
-    version, (job_id,) = await create_version(document_ids, "旧版规定.doc")
-    await asyncio.to_thread(storage.put_file, version.object_key, SAMPLE_DOC)
+    version, job_id = await queue_parse_file(
+        document_ids, "旧版规定.doc", SAMPLE_DOC, storage
+    )
     job = await wait_for_job(job_id)
     assert (job.status, job.attempts, job.error_code) == ("succeeded", 1, None), (
         job.error_code
@@ -209,11 +222,12 @@ async def check_worker_container(document_ids: list, storage: S3ObjectStorage) -
         f"{chunks} chunks, and handed the version to indexing"
     )
 
-    broken, (broken_job_id,) = await create_version(document_ids, "损坏.pdf")
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "broken.pdf"
         path.write_bytes(b"not really a pdf")
-        await asyncio.to_thread(storage.put_file, broken.object_key, path)
+        broken, broken_job_id = await queue_parse_file(
+            document_ids, "损坏.pdf", path, storage
+        )
     job = await wait_for_job(broken_job_id)
     assert (job.status, job.attempts, job.error_code) == (
         "failed",

@@ -50,7 +50,11 @@ def login_context(monkeypatch):
         created_at=utc_now(),
         updated_at=utc_now(),
     )
-    authenticate = AsyncMock(return_value=SimpleNamespace(id=user.id, role="user"))
+    authenticate = AsyncMock(
+        return_value=SimpleNamespace(
+            id=user.id, role="user", password_hash=user.password_hash
+        )
+    )
     lookup = AsyncMock(return_value=user)
     store = SimpleNamespace(create=AsyncMock(), revoke=AsyncMock(return_value=True))
     monkeypatch.setattr(login, "authenticate_with_login_limit", authenticate)
@@ -147,6 +151,19 @@ def test_authentication_rejections_do_not_create_sessions(login_context, code):
 
     assert caught.value is error
     assert context.transactions == []
+    context.store.create.assert_not_awaited()
+
+
+def test_password_reset_during_login_rejects_the_verified_old_password(login_context):
+    context = login_context
+    context.user.password_hash = "reset-password-hash"
+
+    with pytest.raises(AppException) as caught:
+        call_login(context)
+
+    assert caught.value.code == "AUTH_INVALID_CREDENTIALS"
+    assert caught.value.status_code == 401
+    assert context.transactions == ["rollback"]
     context.store.create.assert_not_awaited()
     context.store.revoke.assert_not_awaited()
 

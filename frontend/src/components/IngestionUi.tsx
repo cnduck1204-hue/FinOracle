@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { ChevronLeft, ChevronRight, LoaderCircle } from 'lucide-react'
 import { errorMessage } from '../lib/api'
 import {
@@ -13,10 +13,11 @@ import {
   type Tone,
 } from '../lib/ingestion'
 import type { ImportJob, JobStatus, ValidityStatus, VersionStatus } from '../lib/types'
+import { Dialog } from './Dialog'
 import { Notice } from './Notice'
 
 export function Tag({ tone, children }: { tone: Tone; children: ReactNode }) {
-  return <span className={`state-tag state-tag-${tone}`}>{children}</span>
+  return <span className={`tag tag-${tone}`}>{children}</span>
 }
 
 export function VersionStatusTag({ status }: { status: VersionStatus }) {
@@ -31,22 +32,29 @@ export function ValidityTag({ status }: { status: ValidityStatus }) {
   return <Tag tone={validityTone(status)}>{VALIDITY_LABELS[status]}</Tag>
 }
 
+const progressSegments = Array.from({ length: 10 }, (_, index) => index)
+
 export function JobProgress({ job }: { job: ImportJob }) {
   const percent = jobPercent(job)
-  const running = job.status === 'running' || job.status === 'queued'
+  const running = job.status === 'running'
+  const filled = percent === null ? 0 : Math.floor(percent / 10)
   return (
     <div className="job-progress">
       <span>{jobProgressText(job)}</span>
-      {running && (
+      {(percent !== null || running) && (
         <div
-          className={`job-bar ${percent === null ? 'job-bar-unknown' : ''}`}
+          className="job-progress-bar"
+          data-indeterminate={percent === null || undefined}
+          data-running={running || undefined}
           role="progressbar"
           aria-label="处理进度"
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={percent ?? undefined}
         >
-          <i style={percent === null ? undefined : { width: `${percent}%` }} />
+          {progressSegments.map((segment) => (
+            <span key={segment} data-filled={segment < filled || undefined} aria-hidden="true" />
+          ))}
         </div>
       )}
     </div>
@@ -59,12 +67,14 @@ export function Pagination({
   pageSize,
   unit,
   onPage,
+  disabled = false,
 }: {
   total: number
   page: number
   pageSize: number
   unit: string
   onPage: (page: number) => void
+  disabled?: boolean
 }) {
   const pages = Math.max(1, Math.ceil(total / pageSize))
   return (
@@ -77,19 +87,24 @@ export function Pagination({
           type="button"
           className="icon-button"
           aria-label="上一页"
-          disabled={page <= 1}
+          disabled={disabled || page <= 1}
           onClick={() => onPage(page - 1)}
         >
           <ChevronLeft size={16} />
         </button>
-        <span>
-          第 {page} / {pages} 页
+        <span className="page-count">
+          <span className="sr-only">
+            第 {page} 页，共 {pages} 页
+          </span>
+          <span aria-hidden="true">
+            {String(page).padStart(2, '0')} / {String(pages).padStart(3, '0')}
+          </span>
         </span>
         <button
           type="button"
           className="icon-button"
           aria-label="下一页"
-          disabled={page >= pages}
+          disabled={disabled || page >= pages}
           onClick={() => onPage(page + 1)}
         >
           <ChevronRight size={16} />
@@ -110,58 +125,18 @@ export function LoadingState({ children }: { children: ReactNode }) {
 
 export function LoadFailure({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   return (
-    <>
+    <div style={{ padding: '16px 18px' }}>
       <Notice kind="error" error={error}>
         {errorMessage(error)}
       </Notice>
       <button type="button" className="text-button admin-retry" onClick={onRetry}>
         重试加载
       </button>
-    </>
-  )
-}
-
-/** 模态对话框；使用原生 dialog，关闭后浏览器把焦点还给触发按钮。 */
-export function Dialog({
-  eyebrow,
-  title,
-  busy,
-  onClose,
-  children,
-  wide,
-}: {
-  eyebrow: string
-  title: string
-  busy: boolean
-  onClose: () => void
-  children: ReactNode
-  wide?: boolean
-}) {
-  const dialog = useRef<HTMLDialogElement>(null)
-  useEffect(() => {
-    const element = dialog.current
-    element?.showModal()
-    return () => element?.close()
-  }, [])
-  return (
-    <dialog
-      ref={dialog}
-      className={`admin-confirm ${wide ? 'admin-confirm-wide' : ''}`}
-      aria-label={title}
-      onCancel={(event) => {
-        event.preventDefault()
-        if (!busy) onClose()
-      }}
-    >
-      <span className="eyebrow">// {eyebrow}</span>
-      <h2>{title}</h2>
-      {children}
-    </dialog>
+    </div>
   )
 }
 
 export function ConfirmDialog({
-  eyebrow,
   title,
   target,
   impact,
@@ -171,7 +146,6 @@ export function ConfirmDialog({
   onConfirm,
   onClose,
 }: {
-  eyebrow: string
   title: string
   target: string
   impact: ReactNode
@@ -182,7 +156,7 @@ export function ConfirmDialog({
   onClose: () => void
 }) {
   return (
-    <Dialog eyebrow={eyebrow} title={title} busy={busy} onClose={onClose}>
+    <Dialog title={title} busy={busy} onClose={onClose}>
       <p className="admin-confirm-name">{target}</p>
       <p>{impact}</p>
       {Boolean(error) && (
@@ -191,16 +165,11 @@ export function ConfirmDialog({
         </Notice>
       )}
       <div className="profile-actions">
-        <button
-          type="button"
-          className="cut-button button-dark"
-          disabled={busy}
-          onClick={onConfirm}
-        >
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={onConfirm}>
           {busy && <LoaderCircle size={14} className="spinner" />}
           {confirmLabel}
         </button>
-        <button type="button" className="cut-button" disabled={busy} onClick={onClose}>
+        <button type="button" className="btn" disabled={busy} onClick={onClose}>
           取消
         </button>
       </div>

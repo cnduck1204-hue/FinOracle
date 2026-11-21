@@ -1,7 +1,14 @@
 from functools import lru_cache
 from typing import Literal, Self
 
-from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    Field,
+    SecretStr,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.schemas.auth import RegisterRequest
@@ -32,8 +39,6 @@ class Settings(DatabaseSettings):
     """FinOracle 应用配置"""
 
     app_name: str = "FinOracle API"
-    app_env: str = "development"
-    debug: bool = True
     log_level: str = "INFO"
 
     api_v1_prefix: str = "/api/v1"
@@ -209,6 +214,14 @@ class EmbeddingSettings(BaseSettings):
         return value if value and value.get_secret_value().strip() else None
 
     model_config = _ENV_SOURCE
+
+
+class ChatSettings(BaseSettings):
+    chat_timeout_seconds: float = Field(default=10, gt=0, le=15)
+    chat_dsh_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8091")
+    chat_dsh_token: SecretStr | None = Field(default=None, repr=False)
+
+    model_config = SettingsConfigDict(**_ENV_SOURCE, env_ignore_empty=True)
 
 
 class VectorStoreSettings(BaseSettings):

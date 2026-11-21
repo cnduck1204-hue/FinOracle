@@ -4,19 +4,18 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Row, delete, func, insert, or_, select
+from sqlalchemy import Row, Select, delete, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import (
-    DEFAULT_INGEST,
     Document,
     DocumentChunk,
     DocumentVersion,
     VersionIndex,
     content_digest,
 )
+from app.rag import DEFAULT_INGEST
 from app.rag.parsing.models import Chunk
-from app.repositories.search import LIKE_ESCAPE, contains_pattern
 
 
 class DocumentRepository:
@@ -34,11 +33,6 @@ class DocumentRepository:
             Document, document_id, populate_existing=True, with_for_update=for_update
         )
 
-    async def get_by_external_id(self, external_id: str) -> Document | None:
-        return await self.session.scalar(
-            select(Document).where(Document.external_id == external_id)
-        )
-
     async def list_page(
         self,
         *,
@@ -50,12 +44,11 @@ class DocumentRepository:
         """按最近更新排序；q 按字面匹配标题、发文机构或外部 ID。"""
         filters = []
         if q:
-            pattern = contains_pattern(q)
             filters.append(
                 or_(
-                    Document.title.like(pattern, escape=LIKE_ESCAPE),
-                    Document.issuer.like(pattern, escape=LIKE_ESCAPE),
-                    Document.external_id.like(pattern, escape=LIKE_ESCAPE),
+                    Document.title.contains(q, autoescape=True),
+                    Document.issuer.contains(q, autoescape=True),
+                    Document.external_id.contains(q, autoescape=True),
                 )
             )
         if published is not None:
@@ -143,6 +136,52 @@ class DocumentVersionRepository:
             statement = statement.where(DocumentVersion.document_id.in_(document_ids))
         return list(await self.session.scalars(statement))
 
+    async def match_published_reference(
+        self,
+        reference: str | UUID,
+        document_ids: Sequence[UUID] | None,
+        *,
+        limit: int | None,
+    ) -> list[Row]:
+        """按制度 ID、登记标题或文号精确定位可见版本。"""
+        if isinstance(reference, UUID):
+            match = Document.id == reference
+        else:
+            match = or_(
+                Document.title == reference,
+                DocumentVersion.document_number == reference,
+            )
+        statement = (
+            select(
+                Document.id.label("document_id"),
+                Document.title,
+                DocumentVersion.id.label("version_id"),
+                DocumentVersion.document_number,
+            )
+            .join(DocumentVersion, DocumentVersion.document_id == Document.id)
+            .where(DocumentVersion.status == "published", match)
+            .order_by(Document.title, Document.id)
+            .limit(limit)
+        )
+        if document_ids is not None:
+            statement = statement.where(Document.id.in_(document_ids))
+        return list((await self.session.execute(statement)).all())
+
+    async def published_with_document(self, version_ids: Sequence[UUID]) -> list[Row]:
+        """返回可见的 (版本, 制度)，刷新可能在模型生成期间更新过的时效。"""
+        if not version_ids:
+            return []
+        statement = (
+            select(DocumentVersion, Document)
+            .join(Document, Document.id == DocumentVersion.document_id)
+            .where(
+                DocumentVersion.id.in_(version_ids),
+                DocumentVersion.status == "published",
+            )
+            .execution_options(populate_existing=True)
+        )
+        return list((await self.session.execute(statement)).all())
+
     async def list_for_documents(
         self, document_ids: Sequence[UUID]
     ) -> list[DocumentVersion]:
@@ -170,7 +209,6 @@ def chunk_row(
     chunk: Chunk,
     version: DocumentVersion,
     *,
-    external_id: str | None = None,
     ingest: str = DEFAULT_INGEST,
 ) -> dict[str, Any]:
     """把解析结果中的切片转换为 document_chunks 的一行。"""
@@ -178,7 +216,6 @@ def chunk_row(
         "version_id": version.id,
         "document_id": version.document_id,
         "ingest": ingest,
-        "external_id": external_id,
         "ordinal": chunk.ordinal,
         "chapter": chunk.chapter,
         "section": chunk.section,
@@ -235,29 +272,18 @@ class DocumentChunkRepository:
         version: DocumentVersion,
         chunks: Sequence[Chunk],
         *,
-        external_ids: Sequence[str] | None = None,
         ingest: str = DEFAULT_INGEST,
     ) -> int:
         """删除版本在该入库方案下的切片后整体写入；默认方案同步 chunk_count。
 
         与版本状态更新放在同一事务中：重新解析失败时整体回滚，不会留下新旧混合的切片。
         """
-        if external_ids is not None and len(external_ids) != len(chunks):
-            raise ValueError("external_ids 与切片数量不一致")
         await self.session.execute(
             delete(DocumentChunk).where(
                 DocumentChunk.version_id == version.id, DocumentChunk.ingest == ingest
             )
         )
-        rows = [
-            chunk_row(
-                chunk,
-                version,
-                external_id=external_ids[index] if external_ids else None,
-                ingest=ingest,
-            )
-            for index, chunk in enumerate(chunks)
-        ]
+        rows = [chunk_row(chunk, version, ingest=ingest) for chunk in chunks]
         if rows:
             # 不取回自增主键，MySQL 可批量执行；逐个添加 ORM 对象会每行一次往返
             await self.session.execute(insert(DocumentChunk), rows)
@@ -266,11 +292,10 @@ class DocumentChunkRepository:
         await self.session.flush()
         return len(rows)
 
-    async def published_with_context(self, chunk_ids: Sequence[int]) -> list[Row]:
-        """返回 (切片, 版本, 制度)，只含仍处于已发布版本的切片；顺序不保证。"""
-        if not chunk_ids:
-            return []
-        result = await self.session.execute(
+    def _published_chunks(
+        self, chunk_ids: Sequence[int]
+    ) -> Select[tuple[DocumentChunk, DocumentVersion, Document]]:
+        return (
             select(DocumentChunk, DocumentVersion, Document)
             .join(DocumentVersion, DocumentVersion.id == DocumentChunk.version_id)
             .join(Document, Document.id == DocumentChunk.document_id)
@@ -279,7 +304,35 @@ class DocumentChunkRepository:
                 DocumentVersion.status == "published",
             )
         )
+
+    async def published_with_context(self, chunk_ids: Sequence[int]) -> list[Row]:
+        """返回 (切片, 版本, 制度)，只含仍处于已发布版本的切片；顺序不保证。"""
+        if not chunk_ids:
+            return []
+        result = await self.session.execute(self._published_chunks(chunk_ids))
         return list(result.all())
+
+    async def article_locations(self, version_id: UUID) -> list[Row]:
+        """读取条号及定位字段，供规范化匹配。正文按命中的切片单独读取。"""
+        statement = (
+            select(
+                DocumentChunk.id,
+                DocumentChunk.article,
+                DocumentChunk.ordinal,
+                DocumentChunk.chapter,
+                DocumentChunk.section,
+                DocumentChunk.heading,
+                DocumentChunk.part,
+                DocumentChunk.part_count,
+            )
+            .where(
+                DocumentChunk.version_id == version_id,
+                DocumentChunk.ingest == DEFAULT_INGEST,
+                DocumentChunk.article != "",
+            )
+            .order_by(DocumentChunk.ordinal)
+        )
+        return list((await self.session.execute(statement)).all())
 
     async def all_for_version(
         self, version_id: UUID, *, ingest: str = DEFAULT_INGEST

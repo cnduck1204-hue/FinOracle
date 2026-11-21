@@ -1,6 +1,6 @@
-# 后端 API 交接（2026-10-28）
+# 后端 API 交接
 
-本次交付用户业务 API、测试与交接资料。当前前端已接入认证、本人资料查询与编辑，以及管理员用户管理页 `/admin/users`，包含搜索筛选、分页、详情和启用/禁用。金融文档、RAG、密码修改/找回和全部会话退出不在本次范围。
+本文记录 FinOracle 当前的认证、用户管理、制度文档、条文检索和问答接口。接口和响应字段以运行实例的 OpenAPI 为准。
 
 ## 连接与认证
 
@@ -32,7 +32,7 @@
 
 禁用立即阻止该账号登录、访问受保护接口和刷新。重新启用后必须重新登录；旧 Access/Refresh Token 仍然失效。实现使用数据库 `auth_version` 与 Redis 会话版本比较，Redis 命名空间保留 `finoracle:v2:auth:*`，旧会话缺少版本时按 0 处理。没有 `/auth/logout-all` 或管理员批量退出接口。
 
-## 文档解析预览（2026-11-05 新增）
+## 文档解析预览
 
 `POST /admin/documents/parse` 需要管理员 Bearer Access Token，请求体为 `multipart/form-data`：`file` 必填（PDF、`.docx` / `.doc`、RTF、ODT、TXT/Markdown、PNG/JPG/TIFF 等，最大 50 MB）；可选 `ocr`（`auto` / `rapidocr` / `tesseract` / `none`）、`chunker`（`auto` / `article` / `item` / `length`）、`max_chunk_chars`（100–4000，默认 800）、`chunk_overlap`（默认 100，须小于前者）、`include_blocks`（默认 false）。结果不入库，响应禁止缓存。
 
@@ -40,7 +40,7 @@
 
 同一服务进程一次只解析一个文档，扫描件每页约 0.3–0.6 秒（Tesseract）至 2–3 秒（RapidOCR），客户端应展示进行中状态并避免重复提交。错误码：`DOCUMENT_UNSUPPORTED_TYPE`（415）、`DOCUMENT_TOO_LARGE` / `DOCUMENT_TOO_MANY_PAGES`（413）、`DOCUMENT_INVALID`（422，空文件、损坏、加密、内容与扩展名不符或无法转换）、`DOCUMENT_CONVERSION_UNAVAILABLE` / `OCR_UNAVAILABLE`（503，Gotenberg 不可用或超时，或服务端缺少显式指定的 OCR）、`REQUEST_VALIDATION_ERROR`（422）。前端同源代理已对 `/api/v1/admin/` 路径放宽到请求体 55 MB、读超时 180 秒；大文件或扫描件的解析预览可能超过 180 秒，仍以 API 直连为准。
 
-## 文档入库（2026-11-05 新增）
+## 文档入库
 
 对应设计页 12–16（制度文档管理、导入、导入任务、解析校验、版本管理）。以下接口都需要管理员 Bearer Access Token，路径省略 `/api/v1`，响应禁止缓存，时间为 UTC。完整设计见[入库方案](design/2026-11-05-document-ingestion/README.md)。
 
@@ -67,10 +67,12 @@
 | `POST /admin/versions/{version_id}/reparse` | 可选 JSON 解析参数，不传沿用原参数；仅 `parsed`、`ready` 或 `failed` 状态 | 202 Job |
 | `POST /admin/versions/{version_id}/approve` | 批准向量化；仅 `parsed`（未被自动批准的版本）或 `archived`（下架后重新上线） | 202 Job（`kind` 为 `index`） |
 | `POST /admin/versions/{version_id}/publish` | 仅 `ready`；同一制度原来的发布版本自动变为 `archived` | 200 Version |
+| `GET /admin/versions/{version_id}/pipelines` | — | 200 方案及索引状态数组 |
+| `POST /admin/versions/{version_id}/pipelines/{name}` | 为 `ready` 或 `published` 版本建立附加索引 | 202 Job（`kind` 为 `pipeline`） |
 | `POST /admin/versions/{version_id}/withdraw` | 仅 `published`；下架后为 `archived`，可再批准、发布 | 200 Version |
 | `DELETE /admin/versions/{version_id}` | 仅 `uploaded`、`parsed`、`ready`、`failed` 状态且没有进行中的任务；已发布、已归档的版本保留供历史引用 | 204 |
 
-- **Job**：`id`、`version_id`、`document_id`、`document_title`、`file_name`、`kind`（目前为 `parse`）、`status`（`queued` / `running` / `succeeded` / `failed` / `cancelled`）、`stage`（`downloading` / `converting` / `parsing` / `ocr` / `chunking` / `saving`，未运行时为 null）、`progress_current` / `progress_total`（OCR 阶段为图片张数）、`attempts` / `max_attempts`、`run_after`、`error_code` / `error_message`、`created_at`、`started_at`、`finished_at`、`updated_at`。临时错误会自动重试：`status` 回到 `queued`，`error_code` 保留上次原因，`run_after` 为下次执行时间。
+- **Job**：`id`、`version_id`、`document_id`、`document_title`、`file_name`、`kind`（现行任务为 `parse`、`index`、`pipeline`）、`ingest`（附加索引的入库方案）、`status`（`queued` / `running` / `succeeded` / `failed` / `cancelled`）、`stage`（`downloading` / `converting` / `parsing` / `ocr` / `chunking` / `saving` / `embedding` / `indexing` / `visual` 等，未开始时为 null）、`progress_current` / `progress_total`（OCR 阶段为图片张数）、`attempts` / `max_attempts`、`run_after`、`error_code` / `error_message`、`created_at`、`started_at`、`finished_at`、`updated_at`。临时错误会自动重试：`status` 回到 `queued`，`error_code` 保留上次原因，`run_after` 为下次执行时间。
 - **Document**：`id`、`external_id`、`title`、`issuer`、`version_count`、`published_version` 与 `latest_version`（版本摘要：`id`、`status`、`version_note`、`validity_status`、`published_at`、`created_at`，可为 null）、时间字段。
 - **Version**：
   - 版本信息字段；
@@ -97,22 +99,42 @@
   - `JOB_ATTEMPTS_EXHAUSTED`、`STORAGE_UNAVAILABLE`、`DOCUMENT_CONVERSION_UNAVAILABLE`、`EMBEDDING_UNAVAILABLE`、`VECTOR_STORE_UNAVAILABLE`：可重试；
   - `EMBEDDING_AUTH_FAILED`：向量化密钥无效，需运维更正配置后重试；`EMBEDDING_REJECTED`：内容被向量化服务拒绝。
 
-## 条文检索（2026-11-05 新增）
+## 条文检索
 
-对应设计页 07 全文检索，也是问答的检索基础。需要登录（普通用户即可），只检索已发布版本，响应禁止缓存。
+全文检索需要登录，只返回已发布版本的结果，响应禁止缓存。`GET /search/pipelines` 列出方案及可用状态。默认方案为 `structured-hybrid`，配置视觉服务后可选 `pdf-block-visual` 和 `page-image-visual`。
 
 `POST /search` 请求体：
 - `query`：必填，1–1000 字，去首尾空白；
-- `document_ids`：可选，最多 50 个制度 ID，只在这些制度中检索，对应问答首页的"选择制度范围"；
+- `document_ids`：可选，最多 200 个制度 ID，限制本次全文检索范围；
 - `top_k`：默认 8，范围 1–20。
+- `pipeline`：可选，省略时使用默认方案。
 
-返回 `{query, results}`，`results` 按相关度从高到低。每项包含：
-- **相关度**：`chunk_id`、`score`（融合分数，只用于排序）；`dense_rank` / `dense_score`、`keyword_rank` / `keyword_score`（两路各自的名次与分数，未进入该路时为 null）。
+返回 `{query, pipeline, results}`，`results` 按相关度从高到低。每项包含：
+- **相关度**：`chunk_id`、`score`（融合分数，只用于排序）；`dense_rank` / `dense_score`、`keyword_rank` / `keyword_score`、`visual_rank` / `visual_score`（各路的名次与分数，未命中对应通道时为 null）。
 - `document`：`id`、`title`、`issuer`。
 - `version`：`id`、`document_number`、`version_note`、`published_date`、`effective_date`、`validity_status`、`source_url`。`validity_status` 为 `unknown` 时不能显示为现行有效。
 - **条文位置与内容**：`ordinal`、`chapter`、`section`、`article`、`heading`、`content`、`page_start` / `page_end`。
+- **页图索引**：`bbox` 可提供 PDF 坐标，`modality` 标识结果类型。`has_image=true` 时，带 Access Token 调用 `GET /search/images/{chunk_id}` 读取 PNG。
 
-没有匹配或没有已发布制度时返回空数组。检索服务暂不可用时返回 503 `SEARCH_UNAVAILABLE`；参数不合法时返回 422。
+没有匹配或没有已发布制度时返回空数组。`PIPELINE_NOT_FOUND` 和 `PAGE_IMAGE_NOT_FOUND` 返回 404，`PIPELINE_UNAVAILABLE` 返回 409，`SEARCH_UNAVAILABLE` 返回 503。
+
+## 制度问答与会话
+
+问答接口需要登录，会话列表和历史按账号校验。引用的条文和版本在打开时重新检查发布状态。
+
+| 接口 | 请求与响应 |
+| --- | --- |
+| `POST /chat/stream` | 提交 `question`，可传 `session_id` 和限定资料范围的 `document_ids`。省略 `session_id` 时为当前账号创建会话。使用 `request_id` 去重时需提供 `session_id`。 |
+| `POST /chat/sessions` | 创建会话，返回 201 和 `id`。 |
+| `GET /chat/sessions` | 使用 `q` 搜索标题或问答内容，使用 `archived` 筛选归档状态。传 `pinned=true` 获取置顶会话，传 `pinned=false` 获取未置顶会话。返回 `items` 和 `next_cursor`。 |
+| `GET /chat/sessions/{session_id}` | 默认读取最新轮次。`execution` 按发生顺序提供已保存的模型调用和工具步骤，`tool_steps` 提供其中的工具步骤。读取更早轮次时，将上页的 `next_before_seq` 作为 `before_seq`，并沿用该页的 `through_seq`。 |
+| `PATCH /chat/sessions/{session_id}` | 传 `title` 重命名，传 `pinned` 置顶或取消置顶，传 `archived` 归档或恢复。归档会话仍可查看，恢复后可继续提问。 |
+| `DELETE /chat/sessions/{session_id}` | 删除本人会话及其问答记录，成功返回 204。 |
+| `GET /chat/references/{kind}/{id}` | `kind` 取 `chunk` 或 `version`。来源失去可见性时返回 404。 |
+
+`/chat/stream` 通过 DeepSeek Harness 执行问答并返回 SSE。每轮先发送带 `session_id` 和 `turn_id` 的 `turn`。`model` 带 Agent 模型调用序号 `attempt` 和状态 `state`，`tool` 带工具状态，可附带查询目标 `target` 和结果摘要 `summary`。`progress` 表示生成或实际检索的阶段。 [问答架构](superpowers/specs/2026-11-19-llm-architecture-design.md)
+
+生成期间，`answer_delta` 实时发送模型新增的正文 `text`，供当前调用临时显示。FastAPI 隐藏内部证据标记，并在识别到作为正文输出的 DSML 工具协议时发送 `error`、结束本轮。开始新的模型调用、执行工具或调用失败时，页面清除上一段临时正文。模型完成后，FastAPI 再次校验正文格式、引用和发布范围。表格后紧邻的独立条文引用与表格一并校验。每个可交付的正文块先保存再发送 `paragraph`。`done` 带完整答复、引用、回答状态和 `turn_id`。刷新或断连后通过会话 ID 查询已保存的内容。普通答复及资料缺口说明可使用空引用数组，制度时效使用对应版本的登记字段。
 
 ## 错误与页面处理
 
@@ -120,7 +142,7 @@
 
 | HTTP 状态 | 含义 / 前端处理 |
 | --- | --- |
-| 401 | 账号/密码或令牌无效；受保护请求可尝试一次串行刷新，刷新失败回登录页 |
+| 401 | 账号/密码或令牌无效；受保护请求可尝试一次串行刷新，会话失效时打开认证弹窗 |
 | 403 | 禁用或权限不足；按错误 code 区分，管理员入口可提示无权限 |
 | 404 | 用户或路由不存在 |
 | 409 | 用户名或邮箱冲突，保留表单并提示修改 |
@@ -131,9 +153,9 @@
 
 ## 管理员初始化
 
-通过私有环境变量同时设置 `ADMIN_USERNAME`、`ADMIN_EMAIL`、`ADMIN_PASSWORD`。三项均未设置则跳过；只设置部分会拒绝启动。不提供默认管理员或默认密码，`scripts/init_env.py` 不生成管理员凭据。管理员密码适用注册密码规则，用户名和邮箱遵循相同规范化规则。
+通过私有环境变量同时设置 `ADMIN_USERNAME`、`ADMIN_EMAIL`、`ADMIN_PASSWORD`。三项均未设置则跳过，只设置部分会拒绝启动。本地开发脚本 `scripts/init_env.py` 首次运行时生成 `admin` 账号的随机密码。管理员密码适用注册密码规则，用户名和邮箱遵循相同规范化规则。
 
-迁移后启动初始化支持重复和并发启动。已有管理员时直接跳过创建，保留当前用户名、邮箱、密码和状态；管理员修改个人资料后，原初始化配置不会阻止重启。环境变量仅用于首次创建，不能用于覆盖已有账号；没有管理员时也不会把已存在的普通用户提升为管理员。
+API 在迁移后运行管理员初始化。数据库尚无管理员时，按三项配置创建首个账号。已有管理员时，按当前用户名匹配 `ADMIN_USERNAME`，仅在密码与 `ADMIN_PASSWORD` 不同时更新摘要并使旧会话失效。密码更新和会话版本递增在同一事务内提交。
 
 ## 验证与联调工具
 

@@ -31,8 +31,9 @@ export function BackendStatus() {
       controller?.abort()
     }
   }, [])
+  const state = online === null ? 'checking' : online ? 'online' : 'offline'
   return (
-    <span className="status-tag" data-online={online === true}>
+    <span className="status-pill" data-state={state}>
       <span className="status-dot" aria-hidden="true" />
       {online === null ? '连接服务中' : online ? '服务已就绪' : '服务暂不可用'}
     </span>

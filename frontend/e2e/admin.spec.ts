@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import type { ImportJob } from '../src/lib/types'
 
 const backend = process.env.E2E_API_URL || 'http://127.0.0.1:8001/api/v1'
 const prefix = `e2e_${randomUUID().replaceAll('-', '').slice(0, 8)}`
@@ -34,6 +35,7 @@ async function signIn(page: Page, username: string) {
   await page.getByLabel('用户名或邮箱', { exact: true }).fill(username)
   await page.getByLabel('密码', { exact: true }).fill(password)
   await page.getByRole('button', { name: '进入工作台', exact: true }).click()
+  await expect(page.getByRole('link', { name: '打开我的账号', exact: true })).toBeVisible()
 }
 async function openAdmin(page: Page) {
   await page.goto('/admin/users')
@@ -84,6 +86,69 @@ test('ordinary users cannot enter user management or issue administrator request
   expect(adminRequests).toEqual([])
 })
 
+test('groups import stages by version and keeps each failed job actionable', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  const baseJob = {
+    document_id: 'document',
+    document_title: '理财制度',
+    file_name: '理财制度.pdf',
+    version_id: 'version-one',
+    ingest: null,
+    stage: null,
+    progress_current: 96,
+    progress_total: 96,
+    attempts: 1,
+    max_attempts: 3,
+    run_after: '2026-11-20T00:00:00Z',
+    created_at: '2026-11-20T00:00:00Z',
+    updated_at: '2026-11-20T00:00:00Z',
+    started_at: null,
+    finished_at: null,
+    error_code: null,
+    error_message: null,
+  } satisfies Omit<ImportJob, 'id' | 'kind' | 'status'>
+  const parse = { ...baseJob, id: 'parse-job', kind: 'parse', status: 'succeeded' } as const
+  const index = {
+    ...baseJob,
+    id: 'index-job',
+    kind: 'index',
+    status: 'failed',
+    progress_current: 24,
+    error_message: '索引暂不可用',
+    created_at: '2026-11-20T00:01:00Z',
+  } as const
+  const otherVersion = { ...parse, id: 'other-job', version_id: 'version-two' }
+  let indexJob: ImportJob = index
+  await page.route('**/api/v1/admin/imports?**', (route) => {
+    const kind = new URL(route.request().url()).searchParams.get('kind')
+    const items = [indexJob, otherVersion, parse].filter((job) => !kind || job.kind === kind)
+    return route.fulfill({ json: { items, total: items.length, page: 1, page_size: 20 } })
+  })
+  await page.route('**/api/v1/admin/imports/index-job/retry', (route) => {
+    indexJob = { ...index, status: 'queued', progress_current: 0, error_message: null }
+    return route.fulfill({ json: indexJob })
+  })
+
+  await openAdmin(page)
+  await page.getByRole('button', { name: '打开导航' }).click()
+  await page.getByRole('link', { name: '导入任务', exact: true }).click()
+  const list = page.getByRole('list', { name: '导入任务列表' })
+  await expect(list.getByText(baseJob.file_name, { exact: true })).toHaveCount(2)
+  const grouped = list.locator(':scope > li').filter({ hasText: '索引暂不可用' })
+  await expect(grouped.getByRole('link', { name: '查看校验' })).toHaveCount(2)
+  await expect(grouped.getByRole('link', { name: '查看校验' }).first()).toHaveAttribute(
+    'href',
+    '/admin/imports/parse-job',
+  )
+  await expect(grouped.getByRole('progressbar').first()).toHaveAttribute('aria-valuenow', '100')
+  await expect(grouped.getByRole('button', { name: '重试', exact: true })).toBeInViewport()
+  await grouped.getByRole('button', { name: '重试', exact: true }).click()
+  await expect(list.getByText('排队中', { exact: true })).toBeVisible()
+  await page.getByLabel('任务类型').selectOption('index')
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  await expect(list.getByRole('link', { name: '查看校验' })).toHaveCount(1)
+})
+
 for (const mobile of [false, true]) {
   test(`administrator search, filters, pagination and details on ${mobile ? 'mobile' : 'desktop'}`, async ({
     page,
@@ -97,12 +162,12 @@ for (const mobile of [false, true]) {
     await expect(page.getByText('共 13 位用户', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '下一页', exact: true }).click()
     await expect(table.getByRole('row')).toHaveCount(4)
-    await expect(page.getByText('第 2 / 2 页', { exact: true })).toBeVisible()
+    await expect(page.getByText('02 / 002', { exact: true })).toBeVisible()
     await page.getByLabel('账号角色', { exact: true }).selectOption('user')
     await page.getByLabel('账号状态', { exact: true }).selectOption('disabled')
     await page.getByRole('button', { name: '查询', exact: true }).click()
     await expect(table.getByRole('row')).toHaveCount(2)
-    await expect(page.getByText('第 1 / 1 页', { exact: true })).toBeVisible()
+    await expect(page.getByText('01 / 001', { exact: true })).toBeVisible()
     await table.getByRole('button', { name: '查看详情', exact: true }).click()
     const detail = page.getByRole('region', { name: '用户详情', exact: true })
     await expect(detail.getByText(records[11].id, { exact: true })).toBeVisible()
@@ -146,6 +211,8 @@ test('cancel, disable and re-enable synchronize details and reject old logins', 
     await page.getByLabel('账号状态', { exact: true }).selectOption('active')
     await search(page, target.username)
     const table = page.getByRole('table', { name: '用户列表', exact: true })
+    await expect(table.locator('tbody tr')).toHaveCount(1)
+    await expect(table.getByText(target.username, { exact: true })).toBeVisible()
     await table.getByRole('button', { name: '查看详情', exact: true }).click()
     const detail = page.getByRole('region', { name: '用户详情', exact: true })
     await expect(detail.getByText(target.id, { exact: true })).toBeVisible()
@@ -163,7 +230,8 @@ test('cancel, disable and re-enable synchronize details and reject old logins', 
     await expect(page.getByRole('heading', { name: '账号列表', exact: true })).toBeFocused()
     await expect(detail.getByText('已禁用', { exact: true })).toBeVisible()
     await userPage.reload()
-    await expect(userPage.getByRole('heading', { name: '欢迎回来。' })).toBeVisible()
+    await expect(userPage.getByRole('heading', { name: '查制度，核出处' })).toBeVisible()
+    await expect(userPage.getByRole('link', { name: '登录', exact: true })).toBeVisible()
     await page.getByLabel('账号状态', { exact: true }).selectOption('disabled')
     await page.getByRole('button', { name: '查询', exact: true }).click()
     await table.getByRole('button', { name: '启用', exact: true }).click()
@@ -177,6 +245,7 @@ test('cancel, disable and re-enable synchronize details and reject old logins', 
       data: { refresh_token: oldPair.refresh_token },
     })
     expect(refresh.status()).toBe(401)
+    await userPage.getByRole('link', { name: '登录', exact: true }).click()
     await signIn(userPage, target.username)
     await expect(userPage).toHaveURL(/\/chat$/)
   } finally {
@@ -271,6 +340,8 @@ test('a failed status change keeps the dialog and can be retried once', async ({
   await openAdmin(page)
   await search(page, target.username)
   const table = page.getByRole('table', { name: '用户列表', exact: true })
+  await expect(table.locator('tbody tr')).toHaveCount(1)
+  await expect(table.getByText(target.username, { exact: true })).toBeVisible()
   await table.getByRole('button', { name: '禁用', exact: true }).click()
   const path = `**/api/v1/admin/users/${target.id}/status`
   await page.route(path, async (route) =>

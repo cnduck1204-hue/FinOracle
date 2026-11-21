@@ -3,20 +3,17 @@
 失败时版本置为 failed，可在任务列表中重试。
 """
 
-from collections.abc import Sequence
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.rag.indexing import EmbeddingProvider, VectorStore
-from app.rag.indexing.text_index import TextIndexer
-from app.rag.pipelines.base import IndexTarget, StoredUnit, UnitIndexer
+from app.rag.models import IndexTarget, StoredUnit
+from app.rag.parsing.errors import document_empty
+from app.rag.pipelines import IngestPipeline
 from app.repositories.documents import (
     DocumentChunkRepository,
     DocumentRepository,
     DocumentVersionRepository,
 )
 from app.services.document_errors import (
-    document_empty,
     version_not_found,
     version_state_conflict,
 )
@@ -26,20 +23,12 @@ from app.worker.runtime import JobContext
 class IndexHandler:
     kind = "index"
 
-    def __init__(
-        self,
-        embedding: EmbeddingProvider,
-        store: VectorStore,
-        *,
-        indexers: Sequence[UnitIndexer] | None = None,
-    ) -> None:
-        self.embedding = embedding
-        self.indexers = tuple(indexers or (TextIndexer(embedding, store),))
+    def __init__(self, ingest: IngestPipeline) -> None:
+        self.ingest = ingest
 
     async def run(self, context: JobContext) -> None:
         target, units = await self._load(context)
-        for indexer in self.indexers:
-            await indexer.index(context, target, units)
+        await self.ingest.build(context, target, units)
         await self._save(context)
 
     async def on_failure(self, session: AsyncSession, context: JobContext) -> None:
@@ -80,6 +69,6 @@ class IndexHandler:
             if version is None:
                 raise version_not_found()
             version.status = "ready"
-            version.index_model = self.embedding.model_id
+            version.index_model = self.ingest.model_id
             version.indexed_at = context.now()
             context.succeed(job)

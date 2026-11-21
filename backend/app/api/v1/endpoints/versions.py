@@ -9,8 +9,8 @@ from app.api.dependencies import require_admin
 from app.db.session import get_db
 from app.models.user import User
 from app.rag.indexing import VectorStore, get_vector_store
+from app.rag.parsing.parameters import ParseOptionsInput
 from app.rag.pipelines import PipelineRegistry, get_pipeline_registry
-from app.schemas.document import ParseOptionsInput
 from app.schemas.ingestion import ChunkPage, JobResponse, VersionResponse, VersionUpdate
 from app.schemas.pipeline import VersionPipelineResponse
 from app.services import (

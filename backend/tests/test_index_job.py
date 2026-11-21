@@ -5,10 +5,10 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 
-from app.core.config import ParsingSettings
 from app.models import DocumentVersion, ImportJob
 from app.rag.indexing import VectorRecord
 from app.rag.indexing.errors import embedding_unavailable
+from app.rag.pipelines import create_pipelines
 from app.services.document_publishing import publish_version
 from app.worker.index import IndexHandler
 from app.worker.parse import ParseHandler
@@ -26,18 +26,18 @@ REGULATION = (
     "第一章 总则\n\n第一条 为了规范经营，制定本办法。\n\n"
     "第二条 本办法适用于金融机构。\n\n第三条 本办法自公布之日起施行。\n"
 ).encode()
-SETTINGS = ParsingSettings(_env_file=None)
 
 
 def make_worker(env, *, auto_approve=True, embedding=None, vectors=None):
     env.embedding = embedding or FakeEmbedding()
     env.vectors = vectors or MemoryVectorStore()
+    ingest = create_pipelines(env.embedding, env.vectors).default.ingest
     return Worker(
         env.sessions,
         env.storage,
         [
-            ParseHandler(SETTINGS, auto_approve=auto_approve),
-            IndexHandler(env.embedding, env.vectors),
+            ParseHandler(ingest.parser, auto_approve=auto_approve),
+            IndexHandler(ingest),
         ],
         worker_id="worker-1",
         heartbeat_seconds=0.05,
@@ -261,10 +261,11 @@ def test_old_index_attempt_cannot_change_vectors_after_takeover(tmp_path, pause_
         try:
             assert await asyncio.to_thread(entered.wait, 5)
             env.clock.advance(61)
+            ingest = create_pipelines(FakeEmbedding(), store).default.ingest
             replacement = Worker(
                 env.sessions,
                 env.storage,
-                [IndexHandler(FakeEmbedding(), store)],
+                [IndexHandler(ingest)],
                 worker_id="worker-2",
                 clock=env.clock,
             )

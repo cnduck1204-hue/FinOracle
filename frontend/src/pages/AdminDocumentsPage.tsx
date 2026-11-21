@@ -9,7 +9,8 @@ import {
   ValidityTag,
   VersionStatusTag,
 } from '../components/IngestionUi'
-import { formatDateTime, isVersionBusy, versionName } from '../lib/ingestion'
+import { formatDateTime } from '../lib/dates'
+import { isVersionBusy, versionName } from '../lib/ingestion'
 import { useResource } from '../lib/useResource'
 
 const PAGE_SIZE = 20
@@ -58,12 +59,12 @@ export function AdminDocumentsPage() {
   return (
     <>
       <header className="page-heading">
-        <div>
-          <span className="eyebrow">// DOCUMENT ADMINISTRATION</span>
+        <div className="page-heading-text">
+          <span className="page-kicker">Document Administration</span>
           <h1>制度文档</h1>
-          <p>管理制度与版本。只有已发布的版本才会进入用户检索。</p>
+          <p>管理金融制度与历史版本。只有已发布的版本才会进入问答与全文检索。</p>
         </div>
-        <Link className="cut-button button-primary" to="/admin/imports/new">
+        <Link className="btn btn-primary" to="/admin/imports/new">
           <Plus size={15} aria-hidden="true" />
           导入文档
         </Link>
@@ -98,10 +99,14 @@ export function AdminDocumentsPage() {
             </select>
           </div>
           <div className="admin-filter-actions">
-            <button className="cut-button button-dark" type="submit">
+            <button className="btn btn-primary" type="submit">
               查询
             </button>
-            <button type="button" className="text-button" onClick={() => setParams({})}>
+            <button
+              type="button"
+              className="text-button text-button-muted"
+              onClick={() => setParams({})}
+            >
               重置
             </button>
           </div>
@@ -124,10 +129,13 @@ export function AdminDocumentsPage() {
         {data && (
           <>
             <div className="admin-table-wrap" tabIndex={0} aria-label="制度列表，可横向滚动">
-              <table className="admin-table">
+              <table className="admin-table document-table">
                 <caption className="sr-only">制度列表</caption>
                 <thead>
                   <tr>
+                    <th scope="col" className="row-index">
+                      序号
+                    </th>
                     <th scope="col">制度 / 发文机构</th>
                     <th scope="col">当前发布版本</th>
                     <th scope="col">最新版本</th>
@@ -137,8 +145,11 @@ export function AdminDocumentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.items.map((item) => (
+                  {data.items.map((item, index) => (
                     <tr key={item.id}>
+                      <td className="row-index">
+                        {String((data.page - 1) * data.page_size + index + 1).padStart(2, '0')}
+                      </td>
                       <td>
                         <strong>{item.title}</strong>
                         <small>{item.issuer || '未填写发文机构'}</small>
@@ -147,7 +158,7 @@ export function AdminDocumentsPage() {
                         {item.published_version ? (
                           <>
                             <span>{versionName(item.published_version)}</span>
-                            <div>
+                            <div style={{ marginTop: 4 }}>
                               <ValidityTag status={item.published_version.validity_status} />
                             </div>
                           </>

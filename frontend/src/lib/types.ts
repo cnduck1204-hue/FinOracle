@@ -248,3 +248,105 @@ export interface SearchOutcome {
   pipeline: string
   results: SearchHit[]
 }
+
+type ChatSource = Pick<
+  SearchHit,
+  | 'chunk_id'
+  | 'document'
+  | 'version'
+  | 'chapter'
+  | 'section'
+  | 'article'
+  | 'heading'
+  | 'page_start'
+  | 'page_end'
+>
+
+interface ChatChunkCitation extends ChatSource {
+  kind?: 'chunk'
+  number: number
+}
+
+export interface ChatReference extends ChatSource {
+  content: string
+}
+
+export interface ChatVersionReference {
+  kind: 'version'
+  document: SearchHit['document']
+  version: SearchHit['version'] & { validity_checked_at: string | null }
+}
+
+interface ChatVersionCitation extends ChatVersionReference {
+  number: number
+}
+
+export type ChatCitation = ChatChunkCitation | ChatVersionCitation
+
+export interface ChatAnswerContent {
+  answer: string
+  citations: ChatCitation[]
+}
+
+export interface ChatOutcome extends ChatAnswerContent {
+  status: 'answered' | 'partial' | 'insufficient_evidence'
+  turn_id?: string
+}
+
+export type ChatStepState = 'running' | 'completed' | 'failed' | 'interrupted'
+
+interface ChatModelStep {
+  attempt: number
+  state: ChatStepState
+}
+
+export interface ChatToolStep {
+  id: string
+  tool: 'search_knowledge' | 'get_article' | 'get_document_status' | 'reuse_answer_evidence'
+  state: ChatStepState
+  target?: string | null
+  summary?: string | null
+}
+
+export type ChatExecutionStep = ChatModelStep | ChatToolStep
+
+export interface ChatTurn {
+  id: string
+  question: string
+  state: 'running' | 'completed' | 'interrupted' | 'failed'
+  result: ChatOutcome | null
+  execution?: ChatExecutionStep[]
+  tool_steps?: ChatToolStep[]
+}
+
+export interface ChatSessionCreated {
+  id: string
+}
+
+export interface ChatSessionSummary extends ChatSessionCreated {
+  title: string
+  archived: boolean
+  pinned: boolean
+  updated_at: string
+}
+
+export type ChatSessionUpdate = Partial<Pick<ChatSessionSummary, 'title' | 'archived' | 'pinned'>>
+
+export interface ChatSessionList {
+  items: ChatSessionSummary[]
+  next_cursor: string | null
+}
+
+export interface ChatSessionHistory extends ChatSessionSummary {
+  turns: ChatTurn[]
+  through_seq: number
+  next_before_seq: number | null
+}
+
+export type ChatStreamUpdate =
+  | { type: 'turn'; turn_id: string }
+  | { type: 'progress'; stage: 'retrieving' | 'generating' }
+  | { type: 'model'; step: ChatModelStep }
+  | { type: 'tool'; step: ChatToolStep }
+  | { type: 'answer_delta'; text: string }
+  | { type: 'paragraph'; text: string; citations: ChatCitation[] }

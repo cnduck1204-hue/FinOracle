@@ -9,7 +9,8 @@ import {
   versionPermissions,
 } from '../lib/ingestion'
 import type { DocumentVersion, ParseOptions, VersionBrief } from '../lib/types'
-import { ConfirmDialog, Dialog } from './IngestionUi'
+import { Dialog } from './Dialog'
+import { ConfirmDialog } from './IngestionUi'
 import { ParseOptionFields } from './IngestionForms'
 import { Notice } from './Notice'
 
@@ -86,23 +87,19 @@ export function VersionActions({
     <>
       <div className="version-actions">
         {can.publish && (
-          <button
-            type="button"
-            className="cut-button button-primary"
-            onClick={() => open('publish')}
-          >
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => open('publish')}>
             发布
           </button>
         )}
         {can.approve && (
-          <button type="button" className="cut-button button-dark" onClick={() => open('approve')}>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => open('approve')}>
             {version.status === 'archived' ? '重新上线' : '批准向量化'}
           </button>
         )}
         {can.retry && (
           <button
             type="button"
-            className="cut-button button-dark"
+            className="btn btn-primary btn-sm"
             disabled={retrying}
             onClick={() => void retry()}
           >
@@ -118,18 +115,14 @@ export function VersionActions({
         {can.withdraw && (
           <button
             type="button"
-            className="text-button admin-disable"
+            className="text-button danger-link"
             onClick={() => open('withdraw')}
           >
             下架
           </button>
         )}
         {can.remove && (
-          <button
-            type="button"
-            className="text-button admin-disable"
-            onClick={() => open('remove')}
-          >
+          <button type="button" className="text-button danger-link" onClick={() => open('remove')}>
             删除
           </button>
         )}
@@ -138,7 +131,6 @@ export function VersionActions({
       {action === 'publish' && (
         <ConfirmDialog
           {...dialogProps}
-          eyebrow="PUBLISH VERSION"
           title="确认发布此版本？"
           impact={
             replacingAnother
@@ -152,7 +144,6 @@ export function VersionActions({
       {action === 'approve' && (
         <ConfirmDialog
           {...dialogProps}
-          eyebrow="APPROVE VERSION"
           title={version.status === 'archived' ? '确认重新上线？' : '确认批准向量化？'}
           impact={
             version.parse_status === 'needs_ocr'
@@ -166,7 +157,6 @@ export function VersionActions({
       {action === 'withdraw' && (
         <ConfirmDialog
           {...dialogProps}
-          eyebrow="WITHDRAW VERSION"
           title="确认下架此版本？"
           impact="下架后用户不能再检索到这些条文。切片和原件会保留，可以重新上线。"
           confirmLabel={busy ? '正在下架…' : '确认下架'}
@@ -176,7 +166,6 @@ export function VersionActions({
       {action === 'remove' && (
         <ConfirmDialog
           {...dialogProps}
-          eyebrow="DELETE VERSION"
           title="确认删除此版本？"
           impact={`将永久删除原件 ${version.file_name}、全部切片和向量，无法恢复。`}
           confirmLabel={busy ? '正在删除…' : '确认删除'}
@@ -186,13 +175,7 @@ export function VersionActions({
         />
       )}
       {action === 'reparse' && (
-        <Dialog
-          eyebrow="REPARSE VERSION"
-          title="重新解析此版本"
-          busy={busy}
-          wide
-          onClose={() => setAction(null)}
-        >
+        <Dialog title="重新解析此版本" busy={busy} wide onClose={() => setAction(null)}>
           <p>
             完成后会替换现有切片
             {version.status === 'ready' ? '，并需要重新向量化后才能发布' : ''}。
@@ -207,7 +190,7 @@ export function VersionActions({
           <div className="profile-actions">
             <button
               type="button"
-              className="cut-button button-dark"
+              className="btn btn-primary"
               disabled={busy || Boolean(invalidOptions)}
               onClick={() =>
                 void run(() => client.reparseVersion(version.id, options), '已创建解析任务。')
@@ -216,12 +199,7 @@ export function VersionActions({
               {busy && <LoaderCircle size={14} className="spinner" />}
               开始解析
             </button>
-            <button
-              type="button"
-              className="cut-button"
-              disabled={busy}
-              onClick={() => setAction(null)}
-            >
+            <button type="button" className="btn" disabled={busy} onClick={() => setAction(null)}>
               取消
             </button>
           </div>

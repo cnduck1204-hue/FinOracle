@@ -11,7 +11,6 @@ from pathlib import Path
 
 from app.core.config import ParsingSettings
 from app.rag.files import download
-from app.rag.indexing.visual_index import StoredPageIndexer as StoredPageIndexer
 from app.rag.models import IngestRun, ParsedUnits, SourceFile
 from app.rag.parsing.converters import ConverterProvider
 from app.rag.parsing.errors import document_empty

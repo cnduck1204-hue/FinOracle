@@ -9,13 +9,14 @@ from PIL import Image
 from sqlalchemy import select
 
 from app.api.dependencies import require_current_user
-from app.api.v1.endpoints.search import get_pipelines
 from app.core.config import ParsingSettings, VisualSettings
 from app.core.exceptions import AppException
 from app.main import app
 from app.models import DocumentChunk, DocumentVersion, ImportJob, VersionIndex
 from app.rag.indexing import SearchHit, collection_name
 from app.rag.indexing.errors import embedding_unavailable
+from app.rag.indexing.page_store import PageHit
+from app.rag.indexing.visual_embedding import VisualEmbeddingProvider
 from app.rag.pipelines import (
     BLOCK_INGEST,
     IMAGE_INGEST,
@@ -26,15 +27,12 @@ from app.rag.pipelines import (
     Pipeline,
     PipelineRegistry,
     build_pipelines,
+    get_pipeline_registry,
 )
 from app.rag.pipelines.page_images import PageImageParser
 from app.rag.pipelines.pdf_blocks import parse_pdf_blocks
-from app.rag.pipelines.visual import (
-    PageHit,
-    VisualEmbeddingProvider,
-    VisualHybridRetriever,
-)
 from app.rag.retrieval import HybridRetriever, reciprocal_rank_fusion
+from app.rag.retrieval.visual import VisualHybridRetriever
 from app.schemas.search import SearchRequest
 from app.services import document_imports
 from app.services import pipelines as pipeline_service
@@ -571,7 +569,7 @@ def test_visual_outage_is_reported_as_search_unavailable(tmp_path):
 
 def test_pipelines_endpoint_lists_the_choices():
     fakes = make_registry()
-    app.dependency_overrides[get_pipelines] = lambda: fakes.registry
+    app.dependency_overrides[get_pipeline_registry] = lambda: fakes.registry
     app.dependency_overrides[require_current_user] = lambda: SimpleNamespace(id=uuid4())
     try:
         response = TestClient(app).get("/api/v1/search/pipelines")

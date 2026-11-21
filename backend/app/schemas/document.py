@@ -3,14 +3,7 @@
 from fastapi import UploadFile
 from pydantic import Field
 
-from app.rag.parsing.parameters import (
-    MAX_CHUNK_CHARS,
-    MIN_CHUNK_CHARS,
-    ChunkerChoice,
-    OcrChoice,
-    ParseOptionsInput,
-    ParseRequest,
-)
+from app.rag.parsing.parameters import ParseRequest
 
 
 class ParseUploadForm(ParseRequest):
@@ -21,14 +14,3 @@ class ParseUploadForm(ParseRequest):
         description="PDF、Word（.docx/.doc）、RTF、ODT、TXT/Markdown 或图片",
         json_schema_extra={"format": "binary"},
     )
-
-
-__all__ = [
-    "MAX_CHUNK_CHARS",
-    "MIN_CHUNK_CHARS",
-    "ChunkerChoice",
-    "OcrChoice",
-    "ParseOptionsInput",
-    "ParseRequest",
-    "ParseUploadForm",
-]

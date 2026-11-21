@@ -6,14 +6,8 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.rag.pipelines import (
-    IndexTarget,
-    IngestPipeline,
-    ParsedUnits,
-    PipelineRegistry,
-    SourceFile,
-    StoredUnit,
-)
+from app.rag.models import IndexTarget, ParsedUnits, SourceFile, StoredUnit
+from app.rag.pipelines import IngestPipeline, PipelineRegistry
 from app.repositories.documents import (
     DocumentChunkRepository,
     DocumentRepository,

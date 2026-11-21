@@ -4,14 +4,28 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.core.config import Settings
 from app.models.user import User
 from app.repositories.user import UserRepository
-from app.security.passwords import hash_password
+from app.security.passwords import hash_password, verify_password
 
 
 async def bootstrap_admin(settings: Settings, session: AsyncSession) -> None:
-    """Called under the initialization lock; never overwrite credentials or roles."""
+    """Create the first administrator or sync the named administrator's password."""
+    password = settings.admin_password.get_secret_value()
     async with session.begin():
-        existing = await session.scalar(select(User).where(User.role == "admin"))
-        if existing is not None:
+        admin = await session.scalar(
+            select(User)
+            .where(User.role == "admin", User.username == settings.admin_username)
+            .with_for_update()
+        )
+        if admin is not None and admin.username == settings.admin_username:
+            if not await verify_password(password, admin.password_hash):
+                admin.password_hash = await hash_password(password)
+                admin.auth_version += 1
+            return
+
+        existing_admin = await session.scalar(
+            select(User.id).where(User.role == "admin").limit(1)
+        )
+        if existing_admin is not None:
             return
         repository = UserRepository(session)
         if (
@@ -19,7 +33,7 @@ async def bootstrap_admin(settings: Settings, session: AsyncSession) -> None:
             or await repository.get_by_email(settings.admin_email) is not None
         ):
             raise ValueError("初始化管理员账号与已有账号冲突")
-        password_hash = await hash_password(settings.admin_password.get_secret_value())
+        password_hash = await hash_password(password)
         await repository.add(
             User(
                 username=settings.admin_username,

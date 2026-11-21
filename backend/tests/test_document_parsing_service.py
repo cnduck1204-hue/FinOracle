@@ -10,7 +10,7 @@ from app.core.config import ParsingSettings
 from app.core.exceptions import AppException
 from app.rag.parsing import providers
 from app.rag.parsing.options import MIB
-from app.schemas.document import ParseRequest
+from app.rag.parsing.parameters import ParseRequest
 from app.services import document_parsing
 
 NO_OCR = ParseRequest(ocr="none")

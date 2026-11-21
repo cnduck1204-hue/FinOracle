@@ -7,7 +7,7 @@
 import asyncio
 import signal
 
-from app.core.config import WorkerSettings, get_parsing_settings
+from app.core.config import WorkerSettings
 from app.core.logging import configure_logging
 from app.db.engine import (
     WORKER_ISOLATION_LEVEL,
@@ -34,11 +34,10 @@ async def serve(settings: WorkerSettings) -> None:
         get_storage(),
         [
             ParseHandler(
-                get_parsing_settings(),
+                default.parser,
                 auto_approve=settings.auto_approve_parsed,
-                parser=default.parser,
             ),
-            IndexHandler(embedding, store, indexers=default.indexers),
+            IndexHandler(default),
             PipelineHandler(pipelines),
         ],
         poll_seconds=settings.worker_poll_seconds,

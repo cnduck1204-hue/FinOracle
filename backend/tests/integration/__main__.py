@@ -38,8 +38,12 @@ def main() -> None:
     modules = (*MODULES, "fresh_install") if args.fresh_install else MODULES
     for name in modules:
         print(f"CHECK: {name}", flush=True)
+        # 自动批准时，首次解析和重新解析都可能等待索引任务重试完毕。
+        timeout = 420 if name == "imports" else 240
         subprocess.run(
-            [sys.executable, "-m", f"tests.integration.{name}"], check=True, timeout=240
+            [sys.executable, "-m", f"tests.integration.{name}"],
+            check=True,
+            timeout=timeout,
         )
 
 

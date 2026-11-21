@@ -13,6 +13,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.db.base import utc_now
 from app.models.document import Document, DocumentVersion
+from app.rag.parsing.errors import file_missing
 from app.repositories.documents import (
     DocumentChunkRepository,
     DocumentRepository,
@@ -33,7 +34,6 @@ from app.schemas.ingestion import (
 )
 from app.services.document_errors import (
     document_not_found,
-    file_missing,
     file_not_available,
     job_not_found,
     version_not_found,

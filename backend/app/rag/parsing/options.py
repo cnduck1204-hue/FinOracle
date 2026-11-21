@@ -32,6 +32,5 @@ class ParseOptions:
     min_image_pixels: int = 40_000
     render_dpi: int = 200
     max_render_side: int = 4000
-    min_ocr_confidence: float = DEFAULT_MIN_OCR_CONFIDENCE
     max_chunk_chars: int = DEFAULT_MAX_CHUNK_CHARS
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP

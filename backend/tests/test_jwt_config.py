@@ -68,12 +68,6 @@ def test_obviously_invalid_jwt_secrets_are_rejected_without_echoing_input(secret
         assert secret not in message
 
 
-@pytest.mark.parametrize("environment", ["development", "production"])
-def test_weak_secret_is_rejected_in_every_environment(environment):
-    with pytest.raises(ValidationError):
-        Settings(_env_file=None, app_env=environment, jwt_secret_key="a" * 64)
-
-
 @pytest.mark.parametrize("algorithm", ["none", "HS384", "RS256"])
 def test_jwt_algorithm_is_restricted_to_hs256(algorithm):
     with pytest.raises(ValidationError):

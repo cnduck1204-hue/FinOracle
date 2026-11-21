@@ -1,16 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import {
-  ChevronLeft,
-  ChevronRight,
-  LoaderCircle,
-  RotateCw,
-  Search,
-  UsersRound,
-  X,
-} from 'lucide-react'
+import { LoaderCircle, RotateCw, Search, UsersRound, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
+import { LoadFailure, LoadingState, Pagination, Tag } from '../components/IngestionUi'
 import { Notice } from '../components/Notice'
 import { errorMessage } from '../lib/api'
+import { formatDateTime } from '../lib/dates'
 import type { User, UserListQuery, UserPage } from '../lib/types'
 
 const initialFilters = {
@@ -21,26 +15,9 @@ const initialFilters = {
 }
 const initialQuery = { page: 1, page_size: 20 }
 
-function dateTime(value: string | null) {
-  if (!value) return '尚无记录'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime())
-    ? '暂无记录'
-    : new Intl.DateTimeFormat('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      }).format(date)
-}
-
 function Status({ value }: { value: User['status'] }) {
   return (
-    <span className={`user-status user-status-${value}`}>
-      {value === 'active' ? '已启用' : '已禁用'}
-    </span>
+    <Tag tone={value === 'active' ? 'good' : 'bad'}>{value === 'active' ? '已启用' : '已禁用'}</Tag>
   )
 }
 
@@ -64,7 +41,6 @@ export function AdminUsersPage() {
   const dialog = useRef<HTMLDialogElement>(null)
   const confirmationTrigger = useRef<HTMLButtonElement | null>(null)
   const listHeading = useRef<HTMLHeadingElement>(null)
-  const pages = result ? Math.max(1, Math.ceil(result.total / result.page_size)) : 1
   const nextStatus = target?.status === 'active' ? 'disabled' : 'active'
   const action = nextStatus === 'disabled' ? '禁用' : '启用'
 
@@ -164,12 +140,11 @@ export function AdminUsersPage() {
   return (
     <>
       <header className="page-heading">
-        <div>
-          <span className="eyebrow">// USER ADMINISTRATION</span>
+        <div className="page-heading-text">
+          <span className="page-kicker">User Administration</span>
           <h1>用户管理</h1>
-          <p>查询账号资料，管理普通用户的启用状态。</p>
+          <p>查询账号资料，管理普通用户的启用与禁用状态。</p>
         </div>
-        <span className="page-index">ADMIN / 01</span>
       </header>
 
       <form className="admin-filter-form" onSubmit={search} aria-label="用户筛选">
@@ -233,15 +208,15 @@ export function AdminUsersPage() {
             </select>
           </div>
           <div className="admin-filter-actions">
-            <button className="cut-button button-dark" type="submit">
+            <button className="btn btn-primary" type="submit">
               查询
             </button>
             <button
-              className="text-button"
               type="button"
+              className="text-button text-button-muted"
               onClick={() => {
                 setFilters(initialFilters)
-                setQuery({ ...initialQuery })
+                setQuery(initialQuery)
                 setDetailId(null)
                 setNotice('')
               }}
@@ -253,10 +228,11 @@ export function AdminUsersPage() {
       </form>
 
       {notice && <Notice kind="success">{notice}</Notice>}
+
       <section className="admin-list" aria-labelledby="user-list-heading">
         <div className="admin-section-heading">
           <h2 id="user-list-heading" ref={listHeading} tabIndex={-1}>
-            <UsersRound size={17} aria-hidden="true" />
+            <UsersRound size={17} strokeWidth={1.7} aria-hidden="true" />
             账号列表
           </h2>
           <button
@@ -269,25 +245,9 @@ export function AdminUsersPage() {
             刷新列表
           </button>
         </div>
-        {loading && (
-          <div className="admin-state" role="status">
-            <LoaderCircle size={18} className="spinner" />
-            正在加载用户…
-          </div>
-        )}
+        {loading && <LoadingState>正在加载用户…</LoadingState>}
         {Boolean(error) && (
-          <>
-            <Notice kind="error" error={error}>
-              {errorMessage(error)}
-            </Notice>
-            <button
-              type="button"
-              className="text-button admin-retry"
-              onClick={() => setRevision((value) => value + 1)}
-            >
-              重试加载
-            </button>
-          </>
+          <LoadFailure error={error} onRetry={() => setRevision((value) => value + 1)} />
         )}
         {result && (
           <>
@@ -296,6 +256,9 @@ export function AdminUsersPage() {
                 <caption className="sr-only">用户列表</caption>
                 <thead>
                   <tr>
+                    <th scope="col" className="row-index">
+                      序号
+                    </th>
                     <th scope="col">用户名 / 邮箱</th>
                     <th scope="col">角色</th>
                     <th scope="col">状态</th>
@@ -304,18 +267,23 @@ export function AdminUsersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.items.map((value) => (
-                    <tr key={value.id} aria-selected={value.id === detailId}>
+                  {result.items.map((value, index) => (
+                    <tr key={value.id}>
+                      <td className="row-index">
+                        {String((result.page - 1) * result.page_size + index + 1).padStart(2, '0')}
+                      </td>
                       <td>
-                        <strong>{value.username}</strong>
-                        {value.id === user?.id && <span className="admin-current">当前账号</span>}
+                        <strong>
+                          {value.username}{' '}
+                          {value.id === user?.id && <Tag tone="neutral">当前账号</Tag>}
+                        </strong>
                         <small>{value.email}</small>
                       </td>
                       <td>{value.role === 'admin' ? '管理员' : '普通用户'}</td>
                       <td>
                         <Status value={value.status} />
                       </td>
-                      <td>{dateTime(value.created_at)}</td>
+                      <td>{formatDateTime(value.created_at)}</td>
                       <td>
                         <div className="admin-row-actions">
                           <button
@@ -346,32 +314,14 @@ export function AdminUsersPage() {
               </table>
             </div>
             {!result.items.length && <div className="admin-state">没有符合条件的用户。</div>}
-            <div className="admin-pagination">
-              <span>共 {result.total} 位用户</span>
-              <div>
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label="上一页"
-                  disabled={updating || result.page <= 1}
-                  onClick={() => setQuery({ ...query, page: result.page - 1 })}
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <span>
-                  第 {result.page} / {pages} 页
-                </span>
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label="下一页"
-                  disabled={updating || result.page >= pages}
-                  onClick={() => setQuery({ ...query, page: result.page + 1 })}
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            </div>
+            <Pagination
+              total={result.total}
+              page={result.page}
+              pageSize={result.page_size}
+              unit="位用户"
+              disabled={updating}
+              onPage={(page) => setQuery({ ...query, page })}
+            />
           </>
         )}
       </section>
@@ -433,15 +383,15 @@ export function AdminUsersPage() {
                 </div>
                 <div>
                   <dt>注册时间</dt>
-                  <dd>{dateTime(detail.created_at)}</dd>
+                  <dd>{formatDateTime(detail.created_at)}</dd>
                 </div>
                 <div>
                   <dt>最近登录</dt>
-                  <dd>{dateTime(detail.last_login_at)}</dd>
+                  <dd>{formatDateTime(detail.last_login_at)}</dd>
                 </div>
                 <div>
                   <dt>更新时间</dt>
-                  <dd>{dateTime(detail.updated_at)}</dd>
+                  <dd>{formatDateTime(detail.updated_at)}</dd>
                 </div>
                 <div>
                   <dt>账号 ID</dt>
@@ -451,7 +401,7 @@ export function AdminUsersPage() {
               {detail.role === 'user' ? (
                 <button
                   type="button"
-                  className="cut-button button-dark"
+                  className={`btn ${detail.status === 'active' ? 'btn-danger' : 'btn-primary'}`}
                   disabled={updating}
                   onClick={(event) => confirmStatus(detail, event.currentTarget)}
                 >
@@ -475,7 +425,6 @@ export function AdminUsersPage() {
             if (!updating) closeConfirmation()
           }}
         >
-          <span className="eyebrow">// ACCOUNT STATUS</span>
           <h2 id="admin-confirm-title">确认{action}此用户？</h2>
           <p className="admin-confirm-name">{target.username}</p>
           <p>
@@ -491,7 +440,7 @@ export function AdminUsersPage() {
           <div className="profile-actions">
             <button
               type="button"
-              className="cut-button button-dark"
+              className={`btn ${nextStatus === 'disabled' ? 'btn-danger' : 'btn-primary'}`}
               disabled={updating}
               onClick={() => void updateStatus()}
             >
@@ -500,7 +449,7 @@ export function AdminUsersPage() {
             </button>
             <button
               type="button"
-              className="cut-button"
+              className="btn"
               disabled={updating}
               onClick={() => closeConfirmation()}
             >

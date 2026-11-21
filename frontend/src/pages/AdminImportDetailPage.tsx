@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   AlertTriangle,
   ArrowLeft,
+  Check,
   Download,
   ExternalLink,
   LoaderCircle,
@@ -10,8 +11,8 @@ import {
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { MetadataFields } from '../components/IngestionForms'
+import { Dialog } from '../components/Dialog'
 import {
-  Dialog,
   JobProgress,
   JobStatusTag,
   LoadFailure,
@@ -24,14 +25,13 @@ import {
 import { Notice } from '../components/Notice'
 import { VersionActions } from '../components/VersionActions'
 import { errorMessage } from '../lib/api'
+import { formatDate, formatDateTime } from '../lib/dates'
 import {
   CHUNKER_OPTIONS,
   JOB_KIND_LABELS,
   PARSE_STATUS_LABELS,
   articlePath,
   formatBytes,
-  formatDate,
-  formatDateTime,
   isJobActive,
   isVersionBusy,
   metadataForm,
@@ -49,12 +49,13 @@ const CHUNK_PAGE_SIZE = 20
 function Pipeline({ version }: { version: DocumentVersion }) {
   return (
     <ol className="pipeline" aria-label="处理流程">
-      {pipelineSteps(version).map((step) => (
-        <li key={step.label} className={`pipeline-step pipeline-${step.state}`}>
-          <i aria-hidden="true" />
+      {pipelineSteps(version).map((step, index) => (
+        <li key={step.label} data-state={step.state}>
+          <span className="pipeline-dot" aria-hidden="true">
+            {step.state === 'done' ? <Check size={12} strokeWidth={2.4} /> : index + 1}
+          </span>
           <span>{step.label}</span>
-          {step.state === 'failed' && <small>失败</small>}
-          {step.state === 'current' && <small>当前</small>}
+          {step.state === 'failed' && <span className="tag tag-bad">失败</span>}
         </li>
       ))}
     </ol>
@@ -154,21 +155,27 @@ function EditMetadata({
   }
 
   return (
-    <Dialog eyebrow="VERSION METADATA" title="修改登记信息" busy={busy} wide onClose={onClose}>
+    <Dialog title="修改登记信息" busy={busy} wide onClose={onClose}>
       <form onSubmit={(event) => void save(event)} noValidate>
         <MetadataFields idPrefix="edit" value={form} onChange={setForm} />
-        {problem && <Notice kind="error">{problem}</Notice>}
+        {problem && (
+          <div style={{ marginTop: 12 }}>
+            <Notice kind="error">{problem}</Notice>
+          </div>
+        )}
         {Boolean(error) && (
-          <Notice kind="error" error={error}>
-            {errorMessage(error)}
-          </Notice>
+          <div style={{ marginTop: 12 }}>
+            <Notice kind="error" error={error}>
+              {errorMessage(error)}
+            </Notice>
+          </div>
         )}
         <div className="profile-actions">
-          <button className="cut-button button-dark" type="submit" disabled={busy}>
+          <button className="btn btn-primary" type="submit" disabled={busy}>
             {busy && <LoaderCircle size={14} className="spinner" />}
             保存
           </button>
-          <button type="button" className="cut-button" disabled={busy} onClick={onClose}>
+          <button type="button" className="btn" disabled={busy} onClick={onClose}>
             取消
           </button>
         </div>
@@ -271,8 +278,8 @@ export function AdminImportDetailPage() {
         返回导入任务
       </Link>
       <header className="page-heading">
-        <div>
-          <span className="eyebrow">// PARSE REVIEW</span>
+        <div className="page-heading-text">
+          <span className="page-kicker">Parse Review</span>
           <h1>{data.document.title}</h1>
           <p>
             {version.file_name} · {formatBytes(version.size_bytes)}
@@ -281,7 +288,7 @@ export function AdminImportDetailPage() {
         <div className="heading-actions">
           <VersionStatusTag status={version.status} />
           <ValidityTag status={version.validity_status} />
-          <Link className="text-button" to={`/admin/documents/${version.document_id}/versions`}>
+          <Link className="btn btn-sm" to={`/admin/documents/${version.document_id}/versions`}>
             版本管理
           </Link>
         </div>
@@ -339,7 +346,7 @@ export function AdminImportDetailPage() {
         </div>
       ))}
 
-      <section className="admin-detail">
+      <section className="review-card">
         <div className="admin-section-heading">
           <h2>解析与登记信息</h2>
           <button type="button" className="text-button" onClick={() => setEditing(true)}>
@@ -350,7 +357,11 @@ export function AdminImportDetailPage() {
         <dl className="review-facts">
           <div>
             <dt>解析结果</dt>
-            <dd>{version.parse_status ? PARSE_STATUS_LABELS[version.parse_status] : '尚未完成'}</dd>
+            <dd>
+              {version.parse_status
+                ? (PARSE_STATUS_LABELS[version.parse_status] ?? version.parse_status)
+                : '尚未完成'}
+            </dd>
           </div>
           <div>
             <dt>页数 / 切片</dt>

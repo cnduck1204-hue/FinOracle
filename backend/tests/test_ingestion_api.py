@@ -14,15 +14,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
 from app.api.dependencies import require_current_user
-from app.api.v1.endpoints.search import get_retriever
-from app.core.config import ParsingSettings
 from app.db.base import Base
 from app.db.engine import create_session_factory
 from app.db.session import get_db
 from app.main import app
 from app.models import Document, DocumentChunk, DocumentVersion, ImportJob, User
 from app.rag.indexing import get_vector_store
-from app.rag.retrieval import HybridRetriever
+from app.rag.pipelines import create_pipelines, get_pipeline_registry
 from app.repositories.documents import DocumentVersionRepository
 from app.services import document_imports, document_publishing
 from app.services.document_imports import clean_file_name
@@ -85,6 +83,7 @@ def api(tmp_path):
     storage = MemoryStorage()
     vectors = MemoryVectorStore()
     embedding = FakeEmbedding()
+    ingest = create_pipelines(embedding, vectors).default.ingest
     # auto_approve 控制测试 worker 是否在解析完成后自动创建索引任务
     options = SimpleNamespace(auto_approve=False)
 
@@ -113,10 +112,10 @@ def api(tmp_path):
                 storage,
                 [
                     ParseHandler(
-                        ParsingSettings(_env_file=None),
+                        ingest.parser,
                         auto_approve=options.auto_approve,
                     ),
-                    IndexHandler(embedding, vectors),
+                    IndexHandler(ingest),
                 ],
                 heartbeat_seconds=0.05,
             )
@@ -861,8 +860,8 @@ def test_delayed_archive_cleanup_preserves_republished_vectors(
         assert pending.result(timeout=5).status_code == 200
     assert api.client.get(url).json()["status"] == "published"
     assert len(api.vectors.by_version(version_id)) == 3
-    api.client.app.dependency_overrides[get_retriever] = lambda: HybridRetriever(
-        api.embedding, api.vectors
+    api.client.app.dependency_overrides[get_pipeline_registry] = lambda: (
+        create_pipelines(api.embedding, api.vectors)
     )
     result = api.client.post(
         "/api/v1/search",

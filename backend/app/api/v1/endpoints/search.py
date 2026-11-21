@@ -6,9 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_current_user
 from app.db.session import get_db
-from app.rag.indexing import get_query_embedding, get_vector_store
 from app.rag.pipelines import PipelineRegistry, get_pipeline_registry
-from app.rag.retrieval import HybridRetriever
 from app.schemas.pipeline import PipelineResponse
 from app.schemas.search import SearchRequest, SearchResponse
 from app.services import pipelines as pipeline_service
@@ -18,22 +16,12 @@ from app.storage import ObjectStorage, get_storage
 router = APIRouter(dependencies=[Depends(require_current_user)])
 
 
-def get_retriever() -> HybridRetriever:
-    return HybridRetriever(get_query_embedding(), get_vector_store())
-
-
-def get_pipelines(
-    retriever: Annotated[HybridRetriever, Depends(get_retriever)],
-) -> PipelineRegistry:
-    return get_pipeline_registry().with_default_retrieval(retriever)
-
-
 @router.get(
     "/pipelines", response_model=list[PipelineResponse], summary="可选的检索方案"
 )
 async def list_pipelines(
     response: Response,
-    pipelines: Annotated[PipelineRegistry, Depends(get_pipelines)],
+    pipelines: Annotated[PipelineRegistry, Depends(get_pipeline_registry)],
 ) -> list[PipelineResponse]:
     response.headers["Cache-Control"] = "no-store"
     return pipeline_service.list_pipelines(pipelines)
@@ -74,7 +62,7 @@ async def search(
     payload: SearchRequest,
     response: Response,
     session: Annotated[AsyncSession, Depends(get_db)],
-    pipelines: Annotated[PipelineRegistry, Depends(get_pipelines)],
+    pipelines: Annotated[PipelineRegistry, Depends(get_pipeline_registry)],
 ) -> SearchResponse:
     response.headers["Cache-Control"] = "no-store"
     return await search_service.search(payload, session, pipelines)

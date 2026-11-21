@@ -35,12 +35,13 @@ async def login_user(
             session,
             cache,
         )
+        verified_password_hash = authenticated.password_hash
 
         async with session.begin():
             repository = UserRepository(session)
             user = await repository.get_by_id_for_update(authenticated.id)
 
-            if user is None:
+            if user is None or user.password_hash != verified_password_hash:
                 raise AppException(
                     code="AUTH_INVALID_CREDENTIALS",
                     message="账号或密码错误",

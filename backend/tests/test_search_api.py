@@ -12,7 +12,6 @@ from sqlalchemy.pool import NullPool
 
 import app.rag.indexing as indexing
 from app.api.dependencies import require_current_user
-from app.api.v1.endpoints.search import get_retriever
 from app.db.base import Base
 from app.db.engine import create_session_factory
 from app.db.session import get_db
@@ -25,7 +24,8 @@ from app.rag.indexing.errors import (
     embedding_rejected,
     embedding_unavailable,
 )
-from app.rag.retrieval import HybridRetriever, RetrievedChunk
+from app.rag.pipelines import create_pipelines, get_pipeline_registry
+from app.rag.retrieval import RetrievedChunk
 from tests.test_ingestion_api import enable_foreign_keys, make_user
 from tests.worker_support import FakeEmbedding, MemoryVectorStore
 
@@ -139,7 +139,7 @@ def search(tmp_path):
     event.listen(engine.sync_engine, "connect", enable_foreign_keys)
     sessions = create_session_factory(engine)
     embedding = FakeEmbedding()
-    state = SimpleNamespace(retriever=HybridRetriever(embedding, store))
+    pipelines = create_pipelines(embedding, store)
 
     async def database():
         async with sessions() as session:
@@ -151,7 +151,7 @@ def search(tmp_path):
     previous = app.dependency_overrides.copy()
     app.dependency_overrides[get_db] = database
     app.dependency_overrides[require_current_user] = identity
-    app.dependency_overrides[get_retriever] = lambda: state.retriever
+    app.dependency_overrides[get_pipeline_registry] = lambda: pipelines
     client = TestClient(app, raise_server_exceptions=False)
     try:
         yield SimpleNamespace(
@@ -159,7 +159,7 @@ def search(tmp_path):
             ids=ids,
             store=store,
             embedding=embedding,
-            state=state,
+            pipelines=pipelines,
             db=lambda: Session(sync_engine, expire_on_commit=False),
         )
     finally:
@@ -302,16 +302,13 @@ def test_rejected_queries_keep_their_own_error(search):
     )
 
 
-def test_chunks_withdrawn_during_retrieval_are_dropped(search):
+def test_chunks_withdrawn_during_retrieval_are_dropped(search, monkeypatch):
     kept = search.ids.payment_chunks[0]
 
-    class Stale:
-        requires = HybridRetriever.requires
+    async def retrieve(query, *, version_ids, limit, page_units=None):
+        return [RetrievedChunk(90, 0.5, 1, 0.9), RetrievedChunk(kept, 0.4, 2, 0.8)]
 
-        async def retrieve(self, query, *, version_ids, limit, page_units=None):
-            return [RetrievedChunk(90, 0.5, 1, 0.9), RetrievedChunk(kept, 0.4, 2, 0.8)]
-
-    search.state.retriever = Stale()
+    monkeypatch.setattr(search.pipelines.default.retrieval, "retrieve", retrieve)
     response = search.client.post(URL, json={"query": "证券"})
     assert [item["chunk_id"] for item in response.json()["results"]] == [kept]
 

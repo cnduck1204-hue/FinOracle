@@ -8,8 +8,6 @@ def test_settings_default_values():
     settings = Settings(_env_file=None)
 
     assert settings.app_name == "FinOracle API"
-    assert settings.app_env == "development"
-    assert settings.debug is True
     assert settings.log_level == "INFO"
     assert settings.api_v1_prefix == "/api/v1"
     assert settings.openapi_enabled is True
@@ -17,14 +15,14 @@ def test_settings_default_values():
 
 def test_settings_can_be_overridden_by_environment(monkeypatch):
     monkeypatch.setenv("APP_NAME", "FinOracle Test API")
-    monkeypatch.setenv("DEBUG", "false")
+    monkeypatch.setenv("LOG_LEVEL", "WARNING")
     monkeypatch.setenv("API_V1_PREFIX", "/test/api")
     monkeypatch.setenv("OPENAPI_ENABLED", "false")
 
     settings = Settings(_env_file=None)
 
     assert settings.app_name == "FinOracle Test API"
-    assert settings.debug is False
+    assert settings.log_level == "WARNING"
     assert settings.api_v1_prefix == "/test/api"
     assert settings.openapi_enabled is False
 

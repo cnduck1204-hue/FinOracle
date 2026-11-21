@@ -1,7 +1,7 @@
 import json
 
 from app.core.config import get_parsing_settings
-from app.schemas.document import ParseRequest
+from app.rag.parsing.parameters import ParseRequest
 from app.services import document_parsing
 from scripts import parse_document
 

@@ -1,6 +1,7 @@
 import os
 
 from app.core.config import (
+    ChatSettings,
     DatabaseSettings,
     EmbeddingSettings,
     ParsingSettings,
@@ -20,6 +21,7 @@ os.environ.setdefault(
 
 # 单元测试不读取本机 backend/.env，避免管理员账号、端口等本地配置影响结果
 for settings_class in (
+    ChatSettings,
     DatabaseSettings,
     Settings,
     ParsingSettings,

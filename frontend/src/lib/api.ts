@@ -1,4 +1,14 @@
+import { readChatStream } from './chat-stream'
 import type {
+  ChatOutcome,
+  ChatReference,
+  ChatSessionCreated,
+  ChatSessionHistory,
+  ChatSessionList,
+  ChatSessionSummary,
+  ChatSessionUpdate,
+  ChatStreamUpdate,
+  ChatVersionReference,
   DocumentChunk,
   DocumentListQuery,
   DocumentSummary,
@@ -109,6 +119,7 @@ const versionPath = (id: string) => `/admin/versions/${encodeURIComponent(id)}`
 const documentPath = (id: string) => `/admin/documents/${encodeURIComponent(id)}`
 
 const DEFAULT_TIMEOUT_MS = 15_000
+const CHAT_TIMEOUT_MS = 18_000
 // 文件写入存储后接口才返回，大文件需要更久；略短于 Nginx 对 admin 路径的 180 秒。
 const UPLOAD_TIMEOUT_MS = 170_000
 // 发布与下架要等向量库清理完成，读取原文要等对象存储开始返回。
@@ -235,7 +246,7 @@ export class AuthClient {
         ...init,
         credentials: 'omit',
         cache: 'no-store',
-        signal: controller.signal,
+        signal: init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal,
         headers: {
           Accept: 'application/json',
           // FormData 的 Content-Type 由浏览器生成，带 multipart 分隔符。
@@ -246,6 +257,7 @@ export class AuthClient {
         },
       })
     } catch {
+      if (init.signal?.aborted) throw new ApiError('已取消请求。', 0, 'REQUEST_CANCELLED')
       throw new ApiError(
         controller.signal.aborted
           ? '连接等待超时，请稍后重试。'
@@ -398,6 +410,15 @@ export class AuthClient {
     return this.readProtected<T>(response, generation)
   }
 
+  private async protectedBlob(path: string): Promise<Blob> {
+    const generation = this.generation
+    const response = await this.protectedResponse(path, {}, generation, SLOW_ADMIN_TIMEOUT_MS)
+    if (!response.ok) await this.readProtected<never>(response, generation)
+    const blob = await response.blob()
+    this.assertCurrent(generation)
+    return blob
+  }
+
   async getProfile(): Promise<User> {
     const generation = this.generation
     const user = await this.protectedRequest<unknown>('/users/me')
@@ -423,10 +444,7 @@ export class AuthClient {
   }
 
   async listUsers(query: UserListQuery = {}): Promise<UserPage> {
-    const params = new URLSearchParams({
-      page: String(query.page ?? 1),
-      page_size: String(query.page_size ?? 20),
-    })
+    const params = pageParams(query)
     if (query.q?.trim()) params.set('q', query.q.trim())
     if (query.role) params.set('role', query.role)
     if (query.status) params.set('status', query.status)
@@ -477,6 +495,141 @@ export class AuthClient {
     return result
   }
 
+  async createChatSession(signal?: AbortSignal): Promise<ChatSessionCreated> {
+    const result = await this.protectedRequest<ChatSessionCreated | null>('/chat/sessions', {
+      method: 'POST',
+      signal,
+    })
+    if (typeof result?.id !== 'string' || !result.id)
+      throw new ApiError('会话未能正确创建，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result
+  }
+
+  async getChatSession(
+    id: string,
+    page?: { before: number; through: number },
+  ): Promise<ChatSessionHistory> {
+    const query = page
+      ? '?' +
+        new URLSearchParams({ before_seq: String(page.before), through_seq: String(page.through) })
+      : ''
+    const result = await this.protectedRequest<ChatSessionHistory | null>(
+      `/chat/sessions/${encodeURIComponent(id)}${query}`,
+    )
+    if (result?.id !== id || !Array.isArray(result.turns))
+      throw new ApiError('会话记录未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result
+  }
+
+  async listChatSessions(input: {
+    archived: boolean
+    query: string
+    pinned?: boolean
+    limit?: number
+    cursor?: string
+    signal?: AbortSignal
+  }): Promise<ChatSessionList> {
+    const params = new URLSearchParams({ archived: String(input.archived), q: input.query })
+    if (input.pinned !== undefined) params.set('pinned', String(input.pinned))
+    if (input.limit !== undefined) params.set('limit', String(input.limit))
+    if (input.cursor) params.set('cursor', input.cursor)
+    const result = await this.protectedRequest<ChatSessionList | null>(`/chat/sessions?${params}`, {
+      signal: input.signal,
+    })
+    if (!result || !Array.isArray(result.items))
+      throw new ApiError('会话列表未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result
+  }
+
+  async updateChatSession(id: string, update: ChatSessionUpdate): Promise<ChatSessionSummary> {
+    const result = await this.protectedRequest<ChatSessionSummary | null>(
+      `/chat/sessions/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(update) },
+    )
+    if (result?.id !== id)
+      throw new ApiError('会话更新未能确认，请重新加载。', 502, 'INVALID_RESPONSE')
+    return result
+  }
+
+  async deleteChatSession(id: string): Promise<void> {
+    try {
+      await this.protectedRequest<void>(`/chat/sessions/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+    } catch (error) {
+      if (!(error instanceof ApiError && error.code === 'CHAT_SESSION_NOT_FOUND')) throw error
+    }
+  }
+
+  async askStream(
+    question: string,
+    onUpdate: (update: ChatStreamUpdate) => void,
+    signal?: AbortSignal,
+    sessionId?: string,
+    requestId?: string,
+  ): Promise<ChatOutcome> {
+    const generation = this.generation
+    const deadline = AbortSignal.timeout(CHAT_TIMEOUT_MS)
+    const streamSignal = signal ? AbortSignal.any([signal, deadline]) : deadline
+    const incomplete = () => new ApiError('回答连接已中断，请重试。', 0, 'CHAT_STREAM_INTERRUPTED')
+    try {
+      const response = await this.protectedResponse(
+        '/chat/stream',
+        {
+          method: 'POST',
+          headers: { Accept: 'text/event-stream' },
+          body: JSON.stringify({
+            question,
+            session_id: sessionId,
+            request_id: requestId,
+          }),
+          signal: streamSignal,
+        },
+        generation,
+        CHAT_TIMEOUT_MS,
+      )
+      if (!response.ok) await this.readProtected<never>(response, generation)
+      if (
+        !response.headers.get('content-type')?.startsWith('text/event-stream') ||
+        !response.body
+      ) {
+        throw incomplete()
+      }
+      for await (const message of readChatStream(response.body, streamSignal)) {
+        this.assertCurrent(generation)
+        if (message.type === 'done') return message.result
+        if (message.type === 'error') {
+          throw new ApiError(message.message, 503, message.code, message.requestId)
+        }
+        onUpdate(message)
+      }
+      throw incomplete()
+    } catch (error) {
+      if (signal?.aborted) throw new ApiError('已停止生成。', 0, 'REQUEST_CANCELLED')
+      if (deadline.aborted) throw new ApiError('生成回答超时，请重试。', 0, 'CHAT_TIMEOUT')
+      if (error instanceof ApiError) throw error
+      throw incomplete()
+    }
+  }
+
+  async getChatReference(chunkId: number): Promise<ChatReference> {
+    const result = await this.protectedRequest<ChatReference | null>(
+      `/chat/references/chunk/${chunkId}`,
+    )
+    if (!result || result.chunk_id !== chunkId || typeof result.content !== 'string')
+      throw new ApiError('引用未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result
+  }
+
+  async getChatVersionReference(versionId: string): Promise<ChatVersionReference> {
+    const result = await this.protectedRequest<ChatVersionReference | null>(
+      `/chat/references/version/${encodeURIComponent(versionId)}`,
+    )
+    if (result?.kind !== 'version' || result.version?.id !== versionId)
+      throw new ApiError('版本引用未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result
+  }
+
   async listPipelines(): Promise<PipelineInfo[]> {
     const result = await this.protectedRequest<unknown>('/search/pipelines')
     if (!Array.isArray(result))
@@ -500,18 +653,8 @@ export class AuthClient {
   }
 
   /** 页面图片需要鉴权，先取回 Blob 再显示。 */
-  async fetchSearchImage(chunkId: number): Promise<Blob> {
-    const generation = this.generation
-    const response = await this.protectedResponse(
-      `/search/images/${chunkId}`,
-      {},
-      generation,
-      SLOW_ADMIN_TIMEOUT_MS,
-    )
-    if (!response.ok) await this.readProtected<never>(response, generation)
-    const blob = await response.blob()
-    this.assertCurrent(generation)
-    return blob
+  fetchSearchImage(chunkId: number): Promise<Blob> {
+    return this.protectedBlob(`/search/images/${chunkId}`)
   }
 
   async listDocuments(query: DocumentListQuery = {}): Promise<Page<DocumentSummary>> {
@@ -571,18 +714,8 @@ export class AuthClient {
   }
 
   /** 原文接口需要鉴权，不能直接作为 iframe 地址，所以先取回 Blob。 */
-  async fetchVersionFile(id: string, variant: 'original' | 'pdf'): Promise<Blob> {
-    const generation = this.generation
-    const response = await this.protectedResponse(
-      `${versionPath(id)}/file?variant=${variant}`,
-      {},
-      generation,
-      SLOW_ADMIN_TIMEOUT_MS,
-    )
-    if (!response.ok) await this.readProtected<never>(response, generation)
-    const blob = await response.blob()
-    this.assertCurrent(generation)
-    return blob
+  fetchVersionFile(id: string, variant: 'original' | 'pdf'): Promise<Blob> {
+    return this.protectedBlob(`${versionPath(id)}/file?variant=${variant}`)
   }
 
   async createImport(form: FormData): Promise<ImportJob> {

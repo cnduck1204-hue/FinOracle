@@ -47,14 +47,17 @@ def bootstrap_context(monkeypatch):
     )
     factory = Mock(return_value=repository)
     hasher = AsyncMock(return_value="encoded-admin-hash")
+    verifier = AsyncMock(return_value=False)
     monkeypatch.setattr(bootstrap, "UserRepository", factory)
     monkeypatch.setattr(bootstrap, "hash_password", hasher)
+    monkeypatch.setattr(bootstrap, "verify_password", verifier)
     yield SimpleNamespace(
         settings=admin_settings(),
         session=session,
         repository=repository,
         factory=factory,
         hasher=hasher,
+        verifier=verifier,
         transactions=transactions,
     )
     asyncio.run(session.close())
@@ -75,13 +78,13 @@ def test_bootstrap_creates_active_admin_with_hashed_exact_password(bootstrap_con
     assert not context.session.in_transaction()
 
 
-def test_existing_matching_admin_preserves_password_status_and_version(
+def test_existing_matching_admin_resets_password_and_increments_version(
     bootstrap_context,
 ):
     context = bootstrap_context
     admin = User(
         username=context.settings.admin_username,
-        email=context.settings.admin_email,
+        email="updated@example.com",
         password_hash="existing-admin-hash",
         role="admin",
         status="disabled",
@@ -91,21 +94,22 @@ def test_existing_matching_admin_preserves_password_status_and_version(
     asyncio.run(bootstrap.bootstrap_admin(context.settings, context.session))
 
     assert (admin.password_hash, admin.role, admin.status, admin.auth_version) == (
-        "existing-admin-hash",
+        "encoded-admin-hash",
         "admin",
         "disabled",
-        4,
+        5,
     )
+    assert admin.email == "updated@example.com"
     context.factory.assert_not_called()
-    context.hasher.assert_not_awaited()
+    context.verifier.assert_awaited_once_with(
+        " PrivateBootstrap123 ", "existing-admin-hash"
+    )
+    context.hasher.assert_awaited_once_with(" PrivateBootstrap123 ")
     context.repository.add.assert_not_awaited()
     assert context.transactions == ["commit"]
 
 
-@pytest.mark.parametrize("changed_field", ["username", "email"])
-def test_existing_renamed_admin_is_preserved_despite_old_initialization_config(
-    bootstrap_context, changed_field
-):
+def test_existing_admin_with_same_password_keeps_its_auth_version(bootstrap_context):
     context = bootstrap_context
     admin = User(
         username=context.settings.admin_username,
@@ -113,19 +117,30 @@ def test_existing_renamed_admin_is_preserved_despite_old_initialization_config(
         password_hash="existing-admin-hash",
         role="admin",
         status="active",
-        auth_version=0,
-    )
-    setattr(
-        admin,
-        changed_field,
-        "different" if changed_field == "username" else "different@example.com",
+        auth_version=4,
     )
     context.session.scalar.return_value = admin
-    original_identity = (admin.username, admin.email)
+    context.verifier.return_value = True
     asyncio.run(bootstrap.bootstrap_admin(context.settings, context.session))
-    assert (admin.username, admin.email) == original_identity
+
     assert admin.password_hash == "existing-admin-hash"
+    assert admin.auth_version == 4
+    context.verifier.assert_awaited_once_with(
+        " PrivateBootstrap123 ", "existing-admin-hash"
+    )
+    context.hasher.assert_not_awaited()
+    context.repository.add.assert_not_awaited()
+    assert context.transactions == ["commit"]
+
+
+def test_existing_renamed_admin_is_preserved_despite_old_initialization_config(
+    bootstrap_context,
+):
+    context = bootstrap_context
+    context.session.scalar.side_effect = [None, object()]
+    asyncio.run(bootstrap.bootstrap_admin(context.settings, context.session))
     context.factory.assert_not_called()
+    context.verifier.assert_not_awaited()
     context.hasher.assert_not_awaited()
     context.repository.add.assert_not_awaited()
     assert context.transactions == ["commit"]

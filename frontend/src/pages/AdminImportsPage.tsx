@@ -11,11 +11,22 @@ import {
 } from '../components/IngestionUi'
 import { Notice } from '../components/Notice'
 import { errorMessage } from '../lib/api'
-import { JOB_KIND_LABELS, JOB_STATUS_LABELS, formatDateTime, isJobActive } from '../lib/ingestion'
-import type { JobKind, JobStatus } from '../lib/types'
+import { formatDateTime } from '../lib/dates'
+import { JOB_KIND_LABELS, JOB_STATUS_LABELS, isJobActive } from '../lib/ingestion'
+import type { ImportJob, JobKind, JobStatus } from '../lib/types'
 import { useResource } from '../lib/useResource'
 
 const PAGE_SIZE = 20
+
+function groupJobsByVersion(jobs: ImportJob[]) {
+  const groups = new Map<string, ImportJob[]>()
+  for (const job of jobs) {
+    const group = groups.get(job.version_id)
+    if (group) group.push(job)
+    else groups.set(job.version_id, [job])
+  }
+  return [...groups.values()]
+}
 
 export function AdminImportsPage() {
   const { client } = useAuth()
@@ -77,19 +88,19 @@ export function AdminImportsPage() {
   return (
     <>
       <header className="page-heading">
-        <div>
-          <span className="eyebrow">// IMPORT JOBS</span>
+        <div className="page-heading-text">
+          <span className="page-kicker">Import Pipeline</span>
           <h1>导入任务</h1>
-          <p>跟踪解析和向量化进度，失败的任务可以直接重试。</p>
+          <p>同一页内按文档版本汇总处理阶段，可查看校验或重试失败的任务。</p>
         </div>
-        <Link className="cut-button button-primary" to="/admin/imports/new">
+        <Link className="btn btn-primary" to="/admin/imports/new">
           <Plus size={15} aria-hidden="true" />
           导入文档
         </Link>
       </header>
 
       <form className="admin-filter-form" onSubmit={filter} aria-label="任务筛选">
-        <fieldset className="admin-filters ingest-filters ingest-filters-compact">
+        <fieldset className="admin-filters jobs-filters">
           <div>
             <label htmlFor="job-status">任务状态</label>
             <select
@@ -119,10 +130,14 @@ export function AdminImportsPage() {
             </select>
           </div>
           <div className="admin-filter-actions">
-            <button className="cut-button button-dark" type="submit">
+            <button className="btn btn-primary" type="submit">
               查询
             </button>
-            <button type="button" className="text-button" onClick={() => setParams({})}>
+            <button
+              type="button"
+              className="text-button text-button-muted"
+              onClick={() => setParams({})}
+            >
               重置
             </button>
           </div>
@@ -151,63 +166,73 @@ export function AdminImportsPage() {
         {Boolean(error) && !data && <LoadFailure error={error} onRetry={reload} />}
         {data && (
           <>
-            <div className="admin-table-wrap" tabIndex={0} aria-label="任务列表，可横向滚动">
-              <table className="admin-table">
-                <caption className="sr-only">导入任务列表</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">文件 / 制度</th>
-                    <th scope="col">类型</th>
-                    <th scope="col">状态</th>
-                    <th scope="col">阶段与进度</th>
-                    <th scope="col">尝试</th>
-                    <th scope="col">创建时间</th>
-                    <th scope="col">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.items.map((job) => (
-                    <tr key={job.id}>
-                      <td>
-                        <strong>{job.file_name}</strong>
-                        <small>{job.document_title}</small>
-                      </td>
-                      <td>{JOB_KIND_LABELS[job.kind]}</td>
-                      <td>
-                        <JobStatusTag status={job.status} />
-                      </td>
-                      <td>
-                        <JobProgress job={job} />
-                        {job.error_message && (
-                          <span className="job-error">{job.error_message}</span>
-                        )}
-                      </td>
-                      <td>
-                        {job.attempts} / {job.max_attempts}
-                      </td>
-                      <td>{formatDateTime(job.created_at)}</td>
-                      <td>
-                        <div className="admin-row-actions">
-                          <Link className="text-button" to={`/admin/imports/${job.id}`}>
-                            查看校验
-                          </Link>
-                          {job.status === 'failed' && (
-                            <button
-                              type="button"
-                              className="text-button"
-                              disabled={retrying === job.id}
-                              onClick={() => void retry(job.id, job.file_name)}
-                            >
-                              重试
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="import-list-heading" aria-hidden="true">
+              <span>序号</span>
+              <span>文件 / 制度</span>
+              <span>处理阶段</span>
             </div>
+            <ol className="import-list" role="list" aria-label="导入任务列表">
+              {groupJobsByVersion(data.items).map((jobs, index) => {
+                const [latest] = jobs
+                return (
+                  <li key={latest.version_id} className="import-row">
+                    <span className="import-row-index" aria-hidden="true">
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <div className="import-file">
+                      <strong>{latest.file_name}</strong>
+                      <small>{latest.document_title}</small>
+                    </div>
+                    {/* 接口按时间倒序返回，组内按处理顺序展示。 */}
+                    <ol className="import-stages" role="list">
+                      {jobs
+                        .slice()
+                        .reverse()
+                        .map((job) => (
+                          <li key={job.id} data-status={job.status}>
+                            <div className="import-stage">
+                              <div>
+                                <strong>{JOB_KIND_LABELS[job.kind]}</strong>
+                                {job.ingest && <small>{job.ingest}</small>}
+                              </div>
+                              <JobStatusTag status={job.status} />
+                              {(job.stage ||
+                                job.progress_total !== null ||
+                                job.status === 'running') && <JobProgress job={job} />}
+                              <div className="admin-row-actions">
+                                <Link className="text-button" to={`/admin/imports/${job.id}`}>
+                                  查看校验
+                                </Link>
+                                {job.status === 'failed' && (
+                                  <button
+                                    type="button"
+                                    className="text-button"
+                                    disabled={retrying === job.id}
+                                    onClick={() => void retry(job.id, job.file_name)}
+                                  >
+                                    重试
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <small className="import-stage-meta">
+                              <time dateTime={job.created_at}>
+                                {formatDateTime(job.created_at)}
+                              </time>
+                              <span>
+                                尝试 {job.attempts} / {job.max_attempts}
+                              </span>
+                            </small>
+                            {job.error_message && (
+                              <span className="job-error">{job.error_message}</span>
+                            )}
+                          </li>
+                        ))}
+                    </ol>
+                  </li>
+                )
+              })}
+            </ol>
             {!data.items.length && <div className="admin-state">没有符合条件的任务。</div>}
             <Pagination
               total={data.total}

@@ -35,6 +35,142 @@ function storage() {
 }
 
 describe('authentication client', () => {
+  it('creates, streams and restores one authenticated conversation', async () => {
+    const id = '98b46289-fb96-4bc9-b5e7-2ffd18d759de'
+    const turn = 'a7a55e43-8a63-4ed4-bb35-d01155d39dab'
+    const answer = { status: 'answered', answer: '依据条文回答。', citations: [] }
+    const history = {
+      id,
+      turns: [{ id: turn, question: '第二条呢？', state: 'completed', result: answer }],
+    }
+    const client = new AuthClient({
+      storage: storage(),
+      fetcher: vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/auth/login')) return json(pair())
+        expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer access-1')
+        if (path.endsWith('/chat/sessions') && init?.method === 'POST') return json({ id }, 201)
+        if (path.endsWith(`/chat/sessions/${id}`)) return json(history)
+        expect(path).toBe('/api/v1/chat/stream')
+        expect(JSON.parse(String(init?.body))).toEqual({ question: '第二条呢？', session_id: id })
+        return new Response(
+          `event: turn\ndata: ${JSON.stringify({ turn_id: turn })}\n\nevent: done\ndata: ${JSON.stringify({ ...answer, turn_id: turn })}\n\n`,
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        )
+      }),
+    })
+    await client.login('alice', 'Password123')
+    expect(await client.createChatSession()).toEqual({ id })
+    const onEvent = vi.fn()
+    await expect(client.askStream('第二条呢？', onEvent, undefined, id)).resolves.toMatchObject(
+      answer,
+    )
+    expect(onEvent).toHaveBeenCalledWith({ type: 'turn', turn_id: turn })
+    expect(await client.getChatSession(id)).toEqual(history)
+  })
+
+  it('delivers a streamed paragraph before the done event with split UTF-8 and SSE frames', async () => {
+    const paragraph = { text: '制度内容。[1]', citations: [] }
+    const outcome = { status: 'answered', answer: paragraph.text, citations: [] }
+    const encoder = new TextEncoder()
+    let push!: ReadableStreamDefaultController<Uint8Array>
+    const stream = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        push = controller
+      },
+    })
+    const client = new AuthClient({
+      storage: storage(),
+      fetcher: vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input).endsWith('/auth/login')) return json(pair())
+        expect(String(input)).toBe('/api/v1/chat/stream')
+        expect(new Headers(init?.headers).get('Accept')).toBe('text/event-stream')
+        expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer access-1')
+        expect(JSON.parse(String(init?.body))).toEqual({ question: '条文怎么规定？' })
+        return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } })
+      }),
+    })
+    await client.login('alice', 'Password123')
+    const onEvent = vi.fn()
+    const result = client.askStream('条文怎么规定？', onEvent)
+    const first = encoder.encode(
+      `: ping\r\n\r\nevent: paragraph\rid: 1\rdata: ${JSON.stringify(paragraph)}\r\r`,
+    )
+    for (const byte of first) push.enqueue(Uint8Array.of(byte))
+    await vi.waitFor(() =>
+      expect(onEvent).toHaveBeenCalledWith({ type: 'paragraph', ...paragraph }),
+    )
+    push.enqueue(encoder.encode(`event: done\r\nid: 2\ndata: ${JSON.stringify(outcome)}\r\n\n`))
+    push.close()
+    await expect(result).resolves.toEqual(outcome)
+  })
+
+  it.each([
+    [
+      'skipped revision',
+      'id: 3\nevent: done\ndata: {"status":"answered","answer":"已完成","citations":[]}',
+    ],
+    [
+      'different turn',
+      'id: 2\nevent: done\ndata: {"turn_id":"other","status":"answered","answer":"已完成","citations":[]}',
+    ],
+    [
+      'malformed paragraph',
+      'id: 2\nevent: paragraph\ndata: {"text":42,"citations":[]}\n\nid: 3\nevent: done\ndata: {"turn_id":"current","status":"answered","answer":"已完成","citations":[]}',
+    ],
+    [
+      'malformed citation',
+      'id: 2\nevent: done\ndata: {"turn_id":"current","status":"answered","answer":"已完成[1]","citations":[null]}',
+    ],
+  ])('rejects a stream with %s', async (_case, tail) => {
+    const client = new AuthClient({
+      storage: storage(),
+      fetcher: vi.fn(async (input: string | URL | Request) => {
+        if (String(input).endsWith('/auth/login')) return json(pair())
+        return new Response(`id: 1\nevent: turn\ndata: {"turn_id":"current"}\n\n${tail}\n\n`, {
+          headers: { 'Content-Type': 'text/event-stream' },
+        })
+      }),
+    })
+    await client.login('alice', 'Password123')
+    const onEvent = vi.fn()
+    await expect(client.askStream('条文怎么规定？', onEvent)).rejects.toMatchObject({
+      code: 'CHAT_STREAM_INTERRUPTED',
+    })
+    expect(onEvent.mock.calls).toEqual([[{ type: 'turn', turn_id: 'current' }]])
+  })
+
+  it('opens a citation as the signed-in user', async () => {
+    const reference = { chunk_id: 17, content: '引用原文' }
+    const client = new AuthClient({
+      storage: storage(),
+      fetcher: vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input).endsWith('/auth/login')) return json(pair())
+        expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer access-1')
+        expect(String(input)).toBe('/api/v1/chat/references/chunk/17')
+        return json(reference)
+      }),
+    })
+    await client.login('alice', 'Password123')
+    expect(await client.getChatReference(17)).toEqual(reference)
+  })
+
+  it('opens a published version citation with its verification date', async () => {
+    const id = '98b46289-fb96-4bc9-b5e7-2ffd18d759de'
+    const reference = { kind: 'version', version: { id, validity_checked_at: '2026-11-19' } }
+    const client = new AuthClient({
+      storage: storage(),
+      fetcher: vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input).endsWith('/auth/login')) return json(pair())
+        expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer access-1')
+        expect(String(input)).toBe(`/api/v1/chat/references/version/${id}`)
+        return json(reference)
+      }),
+    })
+    await client.login('alice', 'Password123')
+    expect(await client.getChatVersionReference(id)).toEqual(reference)
+  })
+
   it('encodes administrator list filters and keeps the administrator identity', async () => {
     const administrator = { ...user, role: 'admin' }
     const client = new AuthClient({

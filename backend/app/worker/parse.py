@@ -4,16 +4,11 @@
 版本更新与任务完成在同一事务中提交。
 """
 
-from collections.abc import Callable
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import ParsingSettings
 from app.models.import_job import ImportJob
-from app.rag.parsing.converters import ConverterProvider
-from app.rag.parsing.providers import create_document_converter
-from app.rag.pipelines.base import ParsedUnits, SourceFile, UnitParser
-from app.rag.pipelines.structured import StructuredParser
+from app.rag.models import ParsedUnits, SourceFile
+from app.rag.pipelines.base import UnitParser
 from app.repositories.documents import (
     DocumentChunkRepository,
     DocumentVersionRepository,
@@ -26,17 +21,8 @@ from app.worker.runtime import JobContext
 class ParseHandler:
     kind = "parse"
 
-    def __init__(
-        self,
-        settings: ParsingSettings,
-        converter_factory: Callable[
-            [ParsingSettings], ConverterProvider
-        ] = create_document_converter,
-        *,
-        auto_approve: bool = False,
-        parser: UnitParser | None = None,
-    ) -> None:
-        self.parser = parser or StructuredParser(settings, converter_factory)
+    def __init__(self, parser: UnitParser, *, auto_approve: bool = False) -> None:
+        self.parser = parser
         # 为 True 时，完整解析（没有待 OCR 图片）的版本直接进入向量化，无需人工批准
         self.auto_approve = auto_approve
 

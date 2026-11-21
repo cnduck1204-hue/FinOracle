@@ -69,7 +69,7 @@ class SearchResult(BaseModel):
     page_end: int | None
     # 页面上的位置 [x0, y0, x1, y1]（PDF 点）；方案不提供时为 null
     bbox: list[float] | None = None
-    # text / table；方案不提供时为 null
+    # text / table / page；方案不提供时为 null
     modality: str | None = None
     # 结果是页面图片，用 GET /search/images/{chunk_id} 读取；此时 content 为空
     has_image: bool = False

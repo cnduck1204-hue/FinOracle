@@ -29,7 +29,7 @@ from sqlalchemy.dialects.mysql import DATETIME, MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, utc_now
-from app.rag import DEFAULT_INGEST as DEFAULT_INGEST
+from app.rag import DEFAULT_INGEST
 
 # uploaded → parsing → parsed →（批准）→ indexing → ready →（发布）→ published → archived；
 # 解析或索引失败为 failed，可重试

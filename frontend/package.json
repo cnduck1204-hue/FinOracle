@@ -22,10 +22,14 @@
     "lucide-react": "^1.62.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-router-dom": "^7.18.5"
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.18.5",
+    "remark-gfm": "^4.0.1",
+    "unist-util-visit": "^5.2.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
+    "@types/hast": "^3.0.5",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

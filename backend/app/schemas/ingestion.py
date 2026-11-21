@@ -17,7 +17,7 @@ from pydantic import (
 
 from app.models.document import PARSE_STATUSES, VALIDITY_STATUSES, VERSION_STATUSES
 from app.models.import_job import JOB_KINDS, JOB_STATUSES
-from app.schemas.document import ParseOptionsInput
+from app.rag.parsing.parameters import ParseOptionsInput
 
 
 def _as_utc(value: datetime) -> datetime:

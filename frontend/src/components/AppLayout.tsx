@@ -1,40 +1,46 @@
-import { useEffect, useRef, useState } from 'react'
-import {
-  ArrowUpRight,
-  BookOpen,
-  ChevronRight,
-  FileStack,
-  History,
-  ListChecks,
-  Menu,
-  MessageSquare,
-  Plus,
-  Search,
-  Star,
-  UsersRound,
-} from 'lucide-react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { ChevronRight, Menu, Plus } from 'lucide-react'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { BackendStatus } from './BackendStatus'
 import { Brand } from './Brand'
 import { Notice } from './Notice'
 
-const links = [
-  { path: '/chat', label: '智能问答', icon: MessageSquare },
-  { path: '/library', label: '制度库', icon: BookOpen, soon: true },
-  { path: '/search', label: '全文检索', icon: Search },
-  { path: '/history', label: '会话历史', icon: History, soon: true },
-  { path: '/favorites', label: '我的收藏', icon: Star, soon: true },
-  { path: '/admin/documents', label: '制度文档', icon: FileStack, adminOnly: true },
-  { path: '/admin/imports', label: '导入任务', icon: ListChecks, adminOnly: true },
-  { path: '/admin/users', label: '用户管理', icon: UsersRound, adminOnly: true },
+const searchLink = { path: '/search', label: '全文检索' }
+
+const upcomingLinks = [
+  { path: '/library', label: '制度库', number: '07' },
+  { path: '/favorites', label: '我的收藏', number: '08' },
 ]
 
-export function AppLayout() {
-  const { user, connectionWarning } = useAuth()
+const adminLinks = [
+  { path: '/admin/documents', label: '制度文档', number: '04' },
+  { path: '/admin/imports', label: '导入任务', number: '05' },
+  { path: '/admin/users', label: '用户管理', number: '06' },
+]
+
+const allLinks = [searchLink, ...upcomingLinks, ...adminLinks]
+
+type WorkspaceLayout = {
+  toolbar?: { title: ReactNode; actions: ReactNode }
+  sessions: (closeMenu: () => void) => ReactNode
+  onNewSession: () => void
+  sessionControlsDisabled: boolean
+}
+
+export function AppLayout({
+  children,
+  workspace: { toolbar, sessions, onNewSession, sessionControlsDisabled },
+}: {
+  children: ReactNode
+  workspace: WorkspaceLayout
+}) {
+  const { user, notice, connectionWarning } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
+  const closeMenu = () => setMenuOpen(false)
   const navigation = useRef<HTMLElement>(null)
   const location = useLocation()
+
   useEffect(() => {
     if (!menuOpen) return
     const previousFocus = document.activeElement as HTMLElement | null
@@ -42,7 +48,9 @@ export function AppLayout() {
     document.body.style.overflow = 'hidden'
     navigation.current?.querySelector<HTMLAnchorElement>('a')?.focus()
     const close = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false)
+      if (event.key === 'Escape' && !document.querySelector('dialog[open], :is(:popover-open)')) {
+        setMenuOpen(false)
+      }
     }
     document.addEventListener('keydown', close)
     return () => {
@@ -51,33 +59,31 @@ export function AppLayout() {
       previousFocus?.focus()
     }
   }, [menuOpen])
+
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 860px)')
+    const media = window.matchMedia('(max-width: 900px)')
     const resized = () => {
       if (!media.matches) setMenuOpen(false)
     }
     media.addEventListener('change', resized)
     return () => media.removeEventListener('change', resized)
   }, [])
+
   const pageTitle =
     location.pathname === '/account'
       ? '我的账号'
-      : links.find(
+      : allLinks.find(
           (link) =>
             location.pathname === link.path || location.pathname.startsWith(`${link.path}/`),
         )?.label || '工作台'
-  if (!user) return null
+  const warning = user ? connectionWarning : notice
   return (
     <>
       <a className="skip-link" href="#main-content">
         跳到主要内容
       </a>
       {menuOpen && (
-        <button
-          className="sidebar-backdrop"
-          aria-label="关闭导航"
-          onClick={() => setMenuOpen(false)}
-        />
+        <button className="sidebar-backdrop" aria-label="关闭导航" onClick={closeMenu} />
       )}
       <aside
         ref={navigation}
@@ -85,59 +91,103 @@ export function AppLayout() {
         aria-label="主导航"
         id="main-navigation"
       >
-        <Brand compact />
-        <Link
-          className="cut-button button-primary new-question"
-          to="/chat"
-          onClick={() => setMenuOpen(false)}
-        >
-          <Plus size={16} strokeWidth={1.6} />
-          整理一个问题
-          <ArrowUpRight size={14} style={{ marginLeft: 'auto' }} />
-        </Link>
-        <div className="nav-heading">WORKSPACE / 工作空间</div>
-        <nav className="nav-list">
-          {links
-            .filter((link) => !link.adminOnly || user.role === 'admin')
-            .map(({ path, label, icon: Icon, soon }) => (
-              <NavLink
-                key={path}
-                to={path}
-                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                onClick={() => setMenuOpen(false)}
-              >
-                <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
-                {label}
-                {soon && <small>准备中</small>}
-              </NavLink>
-            ))}
-        </nav>
-        <div className="sidebar-information">
-          <span className="eyebrow">
-            FROM QUESTION
-            <br />
-            TO ORIGINAL SOURCE.
-          </span>
-          <p>
-            从理解制度开始，
-            <br />
-            让每一次判断有据可循。
-          </p>
+        <div className="sidebar-brand">
+          <Brand compact onDark />
         </div>
-        <div className="sidebar-footer">
-          <Link to="/account" className="account-link" onClick={() => setMenuOpen(false)}>
-            <span className="avatar" aria-hidden="true">
-              {user.username[0].toUpperCase()}
-            </span>
-            <div>
-              <strong title={user.username}>{user.username}</strong>
-              <small>个人资料与登录会话</small>
+        <div className="nav-scroll">
+          <nav className="nav-list">
+            <button
+              className="btn btn-primary nav-new-session"
+              type="button"
+              disabled={sessionControlsDisabled}
+              onClick={() => {
+                onNewSession()
+                closeMenu()
+              }}
+            >
+              <span className="nav-index" aria-hidden="true">
+                01
+              </span>
+              新会话
+              <Plus size={16} aria-hidden="true" />
+            </button>
+            <NavLink
+              to={searchLink.path}
+              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+              onClick={closeMenu}
+            >
+              <span className="nav-index" aria-hidden="true">
+                02
+              </span>
+              {searchLink.label}
+            </NavLink>
+          </nav>
+          <section className="sidebar-sessions" aria-label="会话">
+            {user && sessions(closeMenu)}
+            <NavLink to="/history" className="nav-item sidebar-sessions-all" onClick={closeMenu}>
+              <span className="nav-index" aria-hidden="true">
+                03
+              </span>
+              查看全部
+              <ChevronRight size={14} aria-hidden="true" />
+            </NavLink>
+          </section>
+          {user?.role === 'admin' && (
+            <div className="nav-group">
+              <div className="nav-heading">知识治理</div>
+              <nav className="nav-list">
+                {adminLinks.map(({ path, label, number }) => (
+                  <NavLink
+                    key={path}
+                    to={path}
+                    className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-index" aria-hidden="true">
+                      {number}
+                    </span>
+                    {label}
+                  </NavLink>
+                ))}
+              </nav>
             </div>
-            <ArrowUpRight size={16} />
-          </Link>
+          )}
+          <div className="nav-group">
+            <div className="nav-heading">规划模块</div>
+            <nav className="nav-list">
+              {upcomingLinks.map(({ path, label, number }) => (
+                <NavLink
+                  key={path}
+                  to={path}
+                  className={({ isActive }) => `nav-item nav-item-soon ${isActive ? 'active' : ''}`}
+                  onClick={closeMenu}
+                >
+                  <span className="nav-index" aria-hidden="true">
+                    {number}
+                  </span>
+                  {label}
+                  <small>准备中</small>
+                </NavLink>
+              ))}
+            </nav>
+          </div>
         </div>
+        {user && (
+          <div className="sidebar-footer">
+            <Link to="/account" className="account-link" onClick={closeMenu}>
+              <span className="avatar" aria-hidden="true">
+                {user.username[0].toUpperCase()}
+              </span>
+              <div className="account-link-meta">
+                <strong title={user.username}>{user.username}</strong>
+                <small>{user.role === 'admin' ? '管理员账号' : '个人资料与会话'}</small>
+              </div>
+              <ChevronRight size={15} aria-hidden="true" />
+            </Link>
+          </div>
+        )}
       </aside>
-      <header className="app-topbar">
+      <header className={`app-topbar${toolbar ? ' app-topbar-workspace' : ''}`}>
         <div className="breadcrumbs">
           <button
             className="icon-button menu-button"
@@ -148,31 +198,40 @@ export function AppLayout() {
           >
             <Menu size={19} />
           </button>
-          <Link to="/chat">工作台</Link>
-          <ChevronRight size={12} />
-          <span>{pageTitle}</span>
+          {toolbar ? (
+            toolbar.title
+          ) : (
+            <>
+              <Link to="/chat">工作台</Link>
+              <ChevronRight size={13} aria-hidden="true" />
+              <span>{pageTitle}</span>
+            </>
+          )}
         </div>
         <div className="topbar-right">
-          <span className="topbar-date">
-            {new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
-              .format(new Date())
-              .replaceAll('/', '.')}
-          </span>
+          {toolbar?.actions}
           <BackendStatus />
-          <Link to="/account" className="avatar avatar-small" aria-label="打开我的账号">
-            {user.username[0].toUpperCase()}
-          </Link>
+          {user ? (
+            <Link to="/account" className="avatar avatar-small" aria-label="打开我的账号">
+              {user.username[0].toUpperCase()}
+            </Link>
+          ) : (
+            <Link
+              to="/chat"
+              replace
+              state={{ authMode: 'login' }}
+              className="btn btn-primary btn-sm"
+            >
+              登录
+            </Link>
+          )}
         </div>
       </header>
-      <main className="app-main" id="main-content">
-        <div className="page-content">
-          {connectionWarning && <Notice>{connectionWarning}</Notice>}
-          <Outlet />
+      <main className={`app-main${toolbar ? ' app-main-workspace' : ''}`} id="main-content">
+        <div className={`page-content${toolbar ? ' page-content-workspace' : ''}`}>
+          {warning && <Notice>{warning}</Notice>}
+          {children}
         </div>
-        <footer className="app-footer">
-          <span>FinOracle · 金融制度知识工作台</span>
-          <span>KNOWLEDGE WITH CONTEXT</span>
-        </footer>
       </main>
     </>
   )

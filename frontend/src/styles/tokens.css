@@ -1,0 +1,113 @@
+:root {
+  --viewport-height: 100svh;
+
+  /* Typography */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC',
+    'Microsoft YaHei', sans-serif;
+  --font-display: 'Saira Variable', var(--font-sans);
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+
+  /* Surfaces */
+  --canvas: #efefed;
+  --sidebar-bg: #e8e8e5;
+  --surface: #ffffff;
+  --surface-subtle: #f8f8f6;
+  --surface-muted: #f1f1ee;
+  --surface-hover: #e2e2de;
+  --surface-deep: #191a18;
+  --surface-deep-2: #272825;
+  --hatch-line: rgb(25 26 24 / 3%);
+  --hatch: repeating-linear-gradient(135deg, transparent 0 11px, var(--hatch-line) 11px 12px);
+
+  /* Ink & Hierarchy */
+  --ink: #191a18;
+  --ink-secondary: #3d403a;
+  --ink-muted: #565a52;
+  --ink-subtle: #62665d;
+  --ink-on-dark: #f8f8f5;
+  --ink-on-dark-muted: #d0d2c9;
+  --ink-on-dark-subtle: #afb2a7;
+
+  /* Brand & Interactive Accents */
+  --accent: #252822;
+  --accent-hover: #191a18;
+  --accent-soft: #f2f1e7;
+  --accent-ring: rgb(25 26 24 / 14%);
+  --signal: #fffa00;
+  --signal-hover: #e9e400;
+  --signal-ink: #191a18;
+  --control-cut: 8px;
+
+  /* Borders & Rules */
+  --border: #cbcec4;
+  --border-strong: #a4a99d;
+  --border-subtle: #dedfd9;
+  --border-dark: rgb(255 255 255 / 18%);
+
+  /* Semantic Status */
+  --good-bg: var(--surface-muted);
+  --good-ink: var(--ink);
+  --good-border: var(--border-strong);
+
+  --warn-bg: var(--surface-subtle);
+  --warn-ink: var(--ink-secondary);
+  --warn-border: var(--border-strong);
+
+  --bad-bg: var(--surface-muted);
+  --bad-ink: #b42318;
+  --bad-border: var(--border-strong);
+
+  --active-bg: var(--surface-muted);
+  --active-ink: var(--ink);
+  --active-border: var(--border-strong);
+
+  --neutral-bg: var(--surface-muted);
+  --neutral-ink: var(--ink-muted);
+  --neutral-border: var(--border);
+
+  /* Radii */
+  --radius: 0px;
+
+  /* Layout */
+  --sidebar-width: 248px;
+  --topbar-height: 56px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --t-fast: 100ms var(--ease-out);
+  --t-normal: 220ms var(--ease-out);
+
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background: var(--canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --canvas: #20211f;
+    --sidebar-bg: #262725;
+    --surface: #292b28;
+    --surface-subtle: #252724;
+    --surface-muted: #31332f;
+    --surface-hover: #3b3d38;
+    --hatch-line: rgb(248 248 245 / 5%);
+    --ink: #f8f8f5;
+    --ink-secondary: #e2e4dc;
+    --ink-muted: #c0c3b9;
+    --ink-subtle: #acafa4;
+    --accent: #f8f8f5;
+    --accent-hover: #ffffff;
+    --accent-soft: #3b3d38;
+    --accent-ring: rgb(248 248 245 / 16%);
+    --border: #4f524b;
+    --border-strong: #777b70;
+    --border-subtle: #3e413b;
+    --bad-ink: #ffaaa2;
+  }
+}

@@ -78,14 +78,12 @@ def parsed(ordinal: int, content: str, **values) -> Chunk:
     )
 
 
-def test_document_lookup_by_id_and_external_id(db):
+def test_document_lookup_by_id(db):
     document = add_document(db, external_id="P020240802341036118987")
     repository = DocumentRepository(db.session)
 
     assert run(repository.get(document.id)) is document
     assert run(repository.get(document.id, for_update=True)) is document
-    assert run(repository.get_by_external_id("P020240802341036118987")) is document
-    assert run(repository.get_by_external_id("missing")) is None
     assert run(repository.get(uuid4())) is None
 
 
@@ -173,7 +171,7 @@ def test_chunk_row_maps_every_parsed_field(db):
         part_count=3,
     )
 
-    row = chunk_row(chunk, version, external_id="doc_007")
+    row = chunk_row(chunk, version)
 
     assert row == {
         "version_id": version.id,
@@ -181,7 +179,6 @@ def test_chunk_row_maps_every_parsed_field(db):
         "ingest": "structured",
         "bbox": None,
         "modality": None,
-        "external_id": "doc_007",
         "ordinal": 3,
         "chapter": "第二章",
         "section": "第一节",
@@ -209,9 +206,7 @@ def test_replacing_chunks_removes_previous_parse_and_updates_count(db):
     )
 
     count = run(
-        repository.replace_for_version(
-            version, [parsed(1, "新一"), parsed(2, "新二")], external_ids=["c1", "c2"]
-        )
+        repository.replace_for_version(version, [parsed(1, "新一"), parsed(2, "新二")])
     )
 
     stored = db.storage.scalars(
@@ -222,8 +217,8 @@ def test_replacing_chunks_removes_previous_parse_and_updates_count(db):
     assert count == 2
     assert version.chunk_count == 2
     assert [(c.ordinal, c.content, c.external_id) for c in stored] == [
-        (1, "新一", "c1"),
-        (2, "新二", "c2"),
+        (1, "新一", None),
+        (2, "新二", None),
     ]
     assert all(c.document_id == version.document_id for c in stored)
     assert run(repository.list_for_version(sibling.id, offset=0, limit=10))[1] == 1
@@ -237,17 +232,6 @@ def test_replacing_with_no_chunks_clears_the_version(db):
     assert run(repository.replace_for_version(version, [])) == 0
     assert version.chunk_count == 0
     assert run(repository.list_for_version(version.id, offset=0, limit=10)) == ([], 0)
-
-
-def test_external_ids_must_match_chunks(db):
-    version = add_version(db, add_document(db))
-    with pytest.raises(ValueError):
-        run(
-            DocumentChunkRepository(db.session).replace_for_version(
-                version, [parsed(1, "内容")], external_ids=[]
-            )
-        )
-    db.session.execute.assert_not_called()
 
 
 def test_chunk_pages_are_ordered_and_count_all_rows(db):

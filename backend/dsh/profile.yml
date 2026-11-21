@@ -1,0 +1,60 @@
+- id: sdk-app-startup
+  disabled: true
+- id: sdk-jsonrpc-server
+  disabled: true
+- id: deepseek-llm-api-extensions
+  disabled: true
+- id: session-log-deepseek
+  disabled: true
+- id: plugin-package-inventory-deepseek
+  disabled: true
+- id: deepseek-auth
+  disabled: true
+- id: llm-deepseek
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-working-directory
+  disabled: true
+- id: working-directory
+  disabled: true
+- id: persistent-bash
+  disabled: true
+- id: persistent-pwsh
+  disabled: true
+- id: agent-loop
+  config:
+    maxParallelToolCalls: 1
+- id: compaction-basic
+  disabled: true
+- id: system-prompt
+  config:
+    includeHarnessIdentity: false
+    includeRuntimeContext: false
+    personaPrefix: ''
+- insert:
+    - id: credentials
+      name: '@deepseek-ai/dsh-credentials-local'
+    - id: finoracle-model
+      name: '@deepseek-ai/dsh-llm-pi-ai'
+      config:
+        providers:
+          finoracle:
+            api: openai-completions
+            baseURL: !!js "process.env.CHAT_BASE_URL || 'https://api.deepseek.com'"
+            apiKeyEnv: DEEPSEEK_API_KEY
+            reasoning: 'off'
+            retryPolicy:
+              mode: normal
+              maxRetries: 0
+            compat:
+              thinkingFormat: deepseek
+            models:
+              - id: !!js "process.env.CHAT_MODEL || 'deepseek-flash'"
+                contextWindow: !!js "Number(process.env.CHAT_DSH_CONTEXT_WINDOW || 32768)"
+                maxTokens: 2048
+                reasoningEfforts:
+                  'off': 'off'
+                  low: low
+    - id: finoracle-bridge
+      name: ./bridge.mjs

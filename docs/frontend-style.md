@@ -1,10 +1,10 @@
-# 前端风格参考
+# FinOracle 前端风格
 
-希望项目前端参考《明日方舟：终末地》的美术与界面风格，整体采用浅灰＋黑黄方向。
+FinOracle 使用近黑顶栏、带浅斜线纹理的工作区和 `#FFFA00` 信号黄。标题使用 Saira 英文栏目名和粗体中文，导航及管理列表按序编号，管理分页统一显示为 `02 / 010`。界面随系统切换明暗主题，动效遵循系统的减少动态效果设置。
 
-可以参考：
-- [终末地官网](https://endfield.hypergryph.com/#home)
-- [明日方舟设计网站](https://www.ignoredone.space/)
-- [endfield-ui skill](https://github.com/hhikr/endfield-ui-skill)
+- 切角用于主操作和主要内容面板。筛选区使用浅色平面，表格区用较粗的顶边分隔。
+- 状态保留文字标签。完成状态用深底黄字，待处理用描边，失败用深底斜纹。红色用于危险操作和错误反馈。
+- 导入列表按当前页内的文档版本合并文件信息，组内按时间展示处理阶段。任务筛选、总数和分页仍以处理任务为单位，各阶段独立保留校验和重试。已知进度按十格显示，并保留实际计数。
+- 表格的日期、计数和操作保持单行。窄屏可在表格内横向滚动，导入阶段在文件下方纵向排列。
 
-也可以自行搜索相关内容作为补充参考。
+设计参考见 [终末地官网](https://endfield.hypergryph.com/#home)、[ignoredone.space](https://www.ignoredone.space/) 和 [endfield-ui](https://github.com/hhikr/endfield-ui-skill)。

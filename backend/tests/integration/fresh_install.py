@@ -25,6 +25,7 @@ def check_fresh_environment():
         config["services"][service].pop("ports", None)
     api = config["services"]["api"]
     api.pop("build", None)
+    config["services"]["dsh"].pop("build", None)
     api["ports"] = [
         {"target": 8000, "published": "0", "host_ip": "127.0.0.1", "protocol": "tcp"}
     ]
@@ -39,15 +40,8 @@ def check_fresh_environment():
         )
         initialize_env(Path(directory))
         env_file = Path(directory) / ".env"
-        admin_password = "FreshAdmin9" + secrets.token_hex(16)
-        env_text = env_file.read_text(encoding="utf-8")
-        for key, value in {
-            "ADMIN_USERNAME": "fresh_admin",
-            "ADMIN_EMAIL": "fresh_admin@example.com",
-            "ADMIN_PASSWORD": admin_password,
-        }.items():
-            env_text = env_text.replace(f"{key}=\n", f"{key}={value}\n")
-        env_file.write_text(env_text, encoding="utf-8")
+        settings = Settings(_env_file=env_file)
+        admin_password = settings.admin_password.get_secret_value()
         command = [
             "docker",
             "compose",
@@ -68,7 +62,7 @@ def check_fresh_environment():
                 capture_output=True,
                 text=True,
                 check=True,
-                timeout=30,
+                timeout=110,
             )
             return result.stdout.strip()
 
@@ -104,31 +98,72 @@ async def check():
         original = admin.password_hash
         assert await verify_password(settings.admin_password.get_secret_value(), original)
     await asyncio.gather(initialize_admin(settings, engine), initialize_admin(settings, engine))
-    changed = settings.model_copy(update={'admin_password': type(settings.admin_password)('ChangedOnlyForTest123')})
-    await initialize_admin(changed, engine)
     async with SessionFactory() as session:
         assert await session.scalar(select(func.count()).select_from(User).where(User.role == 'admin')) == 1
         admin = await session.scalar(select(User).where(User.role == 'admin'))
-        assert admin.password_hash == original
+        assert admin.password_hash == original and admin.auth_version == 0
     await engine.dispose()
 asyncio.run(check())
 print('PASS: Initial administrator is created; concurrent/repeated initialization preserves its password')
 """
             print(compose("exec", "-T", "api", "python", "-c", bootstrap_check))
             address = compose("port", "api", "8000").splitlines()[0]
-            prefix = Settings(_env_file=env_file).api_v1_prefix.rstrip("/")
+            prefix = settings.api_v1_prefix.rstrip("/")
             with httpx.Client(
                 base_url=f"http://{address}{prefix}", timeout=15, trust_env=False
             ) as client:
                 login = client.post(
                     "/auth/login",
                     json={
-                        "identifier": "fresh_admin",
+                        "identifier": "admin",
                         "password": admin_password,
                     },
                 )
                 assert login.status_code == 200
-                original_id = login.json()["user"]["id"]
+                original_session = login.json()
+                original_id = original_session["user"]["id"]
+
+            new_password = "FreshAdmin9" + secrets.token_hex(16)
+            env_file.write_text(
+                env_file.read_text(encoding="utf-8").replace(
+                    f"ADMIN_PASSWORD={admin_password}\n",
+                    f"ADMIN_PASSWORD={new_password}\n",
+                ),
+                encoding="utf-8",
+            )
+            compose("up", "-d", "--wait", "--wait-timeout", "90", "--no-build")
+            address = compose("port", "api", "8000").splitlines()[0]
+            with httpx.Client(
+                base_url=f"http://{address}{prefix}", timeout=15, trust_env=False
+            ) as client:
+                stale_login = client.post(
+                    "/auth/login",
+                    json={"identifier": "admin", "password": admin_password},
+                )
+                assert stale_login.status_code == 401
+                stale_access = client.get(
+                    "/users/me",
+                    headers={
+                        "Authorization": "Bearer " + original_session["access_token"]
+                    },
+                )
+                assert stale_access.status_code == 401
+                stale_refresh = client.post(
+                    "/auth/refresh",
+                    json={"refresh_token": original_session["refresh_token"]},
+                )
+                assert stale_refresh.status_code == 401
+
+                login = client.post(
+                    "/auth/login",
+                    json={"identifier": "admin", "password": new_password},
+                )
+                assert login.status_code == 200
+                assert login.json()["user"]["id"] == original_id
+                print(
+                    "PASS: Redeploying with a new ADMIN_PASSWORD rotates credentials and invalidates existing sessions"
+                )
+
                 renamed = client.patch(
                     "/users/me",
                     headers={
@@ -143,11 +178,6 @@ print('PASS: Initial administrator is created; concurrent/repeated initializatio
                 assert renamed.json()["id"] == original_id
             compose("restart", "api")
             compose("up", "-d", "--wait", "--wait-timeout", "90", "--no-build")
-            renamed_check = bootstrap_check.replace(
-                "admin.username == settings.admin_username",
-                "admin.username == 'fresh_admin_renamed'",
-            )
-            print(compose("exec", "-T", "api", "python", "-c", renamed_check))
             address = compose("port", "api", "8000").splitlines()[0]
             with httpx.Client(
                 base_url=f"http://{address}{prefix}", timeout=15, trust_env=False
@@ -156,7 +186,7 @@ print('PASS: Initial administrator is created; concurrent/repeated initializatio
                     "/auth/login",
                     json={
                         "identifier": "renamed_admin@example.com",
-                        "password": admin_password,
+                        "password": new_password,
                     },
                 )
                 assert login.status_code == 200

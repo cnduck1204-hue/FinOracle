@@ -4,7 +4,8 @@ import { useAuth } from '../auth/AuthProvider'
 import { ValidityTag } from '../components/IngestionUi'
 import { Notice } from '../components/Notice'
 import { errorMessage } from '../lib/api'
-import { articlePath, formatDate, pageLabel } from '../lib/ingestion'
+import { formatDate } from '../lib/dates'
+import { articlePath, pageLabel } from '../lib/ingestion'
 import { useResource } from '../lib/useResource'
 import type { SearchHit, SearchOutcome } from '../lib/types'
 
@@ -58,7 +59,7 @@ function Result({ hit, index }: { hit: SearchHit; index: number }) {
     <li className="search-result">
       <div className="search-result-head">
         <span className="search-rank">{String(index + 1).padStart(2, '0')}</span>
-        <div>
+        <div className="search-result-title">
           <h3>{document.title}</h3>
           <p>{hit.has_image ? '页面图片' : articlePath(hit)}</p>
         </div>
@@ -109,7 +110,7 @@ function Result({ hit, index }: { hit: SearchHit; index: number }) {
           </div>
         )}
       </dl>
-      <span className="search-channels">{channels.join(' · ')}</span>
+      {channels.length > 0 && <span className="search-channels">{channels.join(' · ')}</span>}
     </li>
   )
 }
@@ -163,12 +164,11 @@ export function SearchPage() {
   return (
     <>
       <header className="page-heading">
-        <div>
-          <span className="eyebrow">// FULL-TEXT SEARCH</span>
+        <div className="page-heading-text">
+          <span className="page-kicker">Full-Text Search</span>
           <h1>全文检索</h1>
-          <p>在已发布的制度中定位条文，结果保留版本、条号和页码。</p>
+          <p>在已发布的制度中精确定位条文，结果完整保留版本、条号与页码出处。</p>
         </div>
-        <span className="page-index">SEARCH / 01</span>
       </header>
 
       <form className="composer search-composer" onSubmit={submit} role="search">
@@ -219,24 +219,16 @@ export function SearchPage() {
               ))}
             </select>
           </div>
-          <button
-            className="cut-button button-primary"
-            type="submit"
-            disabled={searching || !query.trim()}
-          >
+          <button className="btn btn-primary" type="submit" disabled={searching || !query.trim()}>
             {searching ? (
-              <LoaderCircle size={14} className="spinner" />
+              <LoaderCircle size={15} className="spinner" />
             ) : (
-              <Search size={14} aria-hidden="true" />
+              <Search size={15} aria-hidden="true" />
             )}
             {searching ? '正在检索…' : '开始检索'}
           </button>
         </div>
       </form>
-      <p className="search-hint">
-        {options.length > 1 && selected && <>{selected.description} </>}
-        Enter 检索，Shift + Enter 换行。未发布的草稿不会出现在结果中。
-      </p>
 
       {Boolean(error) && (
         <Notice kind="error" error={error}>
@@ -245,26 +237,23 @@ export function SearchPage() {
       )}
 
       {outcome && (
-        <section className="admin-list" aria-labelledby="search-results-heading">
-          <div className="admin-section-heading">
+        <section className="search-results-section" aria-labelledby="search-results-heading">
+          <div className="search-summary">
             <h2 id="search-results-heading">
               <FileSearch size={17} aria-hidden="true" />
-              检索结果
+              检索结果（{outcome.results.length}）
             </h2>
-            <span className="search-count" role="status">
-              {usedLabel && `${usedLabel} · `}“{outcome.query}” 找到 {outcome.results.length} 条
-            </span>
+            {usedLabel && <small>检索方案：{usedLabel}</small>}
           </div>
           {outcome.results.length ? (
-            <ol className="search-results">
+            <ol className="search-list">
               {outcome.results.map((hit, index) => (
                 <Result key={hit.chunk_id} hit={hit} index={index} />
               ))}
             </ol>
           ) : (
-            <div className="admin-state">
-              没有找到相关条文。可以换一种说法，或确认相关制度已经发布
-              {selected && !selected.default ? '，并已建立该方案的索引' : ''}。
+            <div className="surface-card admin-state">
+              没有在已发布的制度中找到匹配条文，请换一个关键词再试。
             </div>
           )}
         </section>
