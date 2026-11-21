@@ -77,10 +77,14 @@ async def check_indexing() -> None:
                 f"{embedding_settings.embedding_dimension}"
             )
             assert version["latest_job"]["kind"] == "index"
-            assert await count(first["version_id"]) == version["chunk_count"] > 0
+            # The .doc fixture starts with a title-only chunk. Its text is
+            # included in the clause vectors without a separate index entry.
+            expected_vectors = version["chunk_count"] - 1
+            assert expected_vectors > 0
+            assert await count(first["version_id"]) == expected_vectors
             print(
-                f"PASS: Parsed version was auto-approved and {version['chunk_count']} "
-                "chunks were embedded into Milvus"
+                "PASS: Parsed version was auto-approved and "
+                f"{expected_vectors} clauses were embedded into Milvus"
             )
 
             chunks = (
