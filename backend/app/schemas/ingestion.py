@@ -35,11 +35,49 @@ def _http_url(value: str) -> str:
 UtcDateTime = Annotated[datetime, AfterValidator(_as_utc)]
 HttpUrlText = Annotated[str, Field(max_length=2048), AfterValidator(_http_url)]
 ShortText = Annotated[str, Field(min_length=1, max_length=255)]
+CategoryText = Annotated[str, Field(min_length=1, max_length=64)]
 VersionStatus = Literal[VERSION_STATUSES]
 ValidityStatus = Literal[VALIDITY_STATUSES]
 ParseStatus = Literal[PARSE_STATUSES]
 JobKind = Literal[JOB_KINDS]
 JobStatus = Literal[JOB_STATUSES]
+
+_MAX_TAGS = 20
+_MAX_TAG_LENGTH = 32
+
+
+def normalize_tags(value: object) -> list[str]:
+    """支持逗号/顿号分隔字符串或字符串列表，去重并限制数量与长度。"""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raw_items = [
+            part.strip()
+            for part in value.replace("，", ",").replace("、", ",").split(",")
+        ]
+    elif isinstance(value, list):
+        raw_items = []
+        for item in value:
+            if not isinstance(item, str):
+                raise ValueError("标签必须为字符串")
+            raw_items.append(item.strip())
+    else:
+        raise ValueError("标签格式无效")
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for tag in raw_items:
+        if not tag:
+            continue
+        if len(tag) > _MAX_TAG_LENGTH:
+            raise ValueError(f"单个标签不能超过 {_MAX_TAG_LENGTH} 个字符")
+        key = tag.casefold()
+        if key not in seen:
+            seen.add(key)
+            cleaned.append(tag)
+    if len(cleaned) > _MAX_TAGS:
+        raise ValueError(f"标签数量不能超过 {_MAX_TAGS} 个")
+    return cleaned
+
 
 # 版本元数据中可以为空的字段；表单留空提交的空字符串按未填写处理
 _OPTIONAL_METADATA = (
@@ -96,19 +134,28 @@ class ImportForm(VersionMetadata, ParseOptionsInput):
     )
     title: ShortText | None = Field(default=None, description="新建制度时必填")
     issuer: ShortText | None = Field(default=None, description="发文机构")
+    category: CategoryText | None = Field(default=None, description="制度主题分类")
+    tags: list[str] = Field(default_factory=list, description="知识点标签列表")
 
-    @field_validator("document_id", "title", "issuer", mode="before")
+    @field_validator("document_id", "title", "issuer", "category", mode="before")
     @classmethod
     def blank_identity_as_none(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
             return None
         return value
 
+    @field_validator("tags", mode="before")
+    @classmethod
+    def parse_import_tags(cls, value: object) -> list[str]:
+        return normalize_tags(value)
+
     @model_validator(mode="after")
     def check_document(self) -> Self:
         if self.document_id is None and self.title is None:
             raise ValueError("新建制度时必须提供标题")
-        if self.document_id is not None and (self.title or self.issuer):
+        if self.document_id is not None and (
+            self.title or self.issuer or self.category or self.tags
+        ):
             raise ValueError("为已有制度上传版本时不能修改制度信息")
         return self
 
@@ -121,6 +168,8 @@ class DocumentUpdate(BaseModel):
 
     title: ShortText | None = None
     issuer: ShortText | None = None
+    category: CategoryText | None = None
+    tags: list[str] | None = None
 
     @field_validator("title", mode="before")
     @classmethod
@@ -128,6 +177,20 @@ class DocumentUpdate(BaseModel):
         if value is None:
             raise ValueError("标题不能为空")
         return value
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def blank_category_as_none(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def parse_update_tags(cls, value: object) -> list[str] | None:
+        if value is None:
+            return []
+        return normalize_tags(value)
 
     @model_validator(mode="after")
     def require_update(self) -> Self:
@@ -181,6 +244,8 @@ class DocumentResponse(BaseModel):
     external_id: str | None
     title: str
     issuer: str | None
+    category: str | None = None
+    tags: list[str] = Field(default_factory=list)
     version_count: int
     # 当前发布版本；没有时为 null
     published_version: VersionBrief | None

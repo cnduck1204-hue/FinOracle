@@ -1,4 +1,4 @@
-"""制度、版本与切片。设计见 docs/design/2026-11-05-document-ingestion。
+"""制度、版本与切片。设计见 docs/document-ingestion.md。
 
 一个制度（Document）有多个版本（DocumentVersion），文件、时效与解析结果都属于版本；
 切片（DocumentChunk）属于版本。每个制度最多一个已发布版本，由数据库唯一约束保证。
@@ -71,7 +71,10 @@ class Document(Base):
 
     __tablename__ = "documents"
 
-    __table_args__ = (UniqueConstraint("external_id", name="uq_documents_external_id"),)
+    __table_args__ = (
+        UniqueConstraint("external_id", name="uq_documents_external_id"),
+        Index("ix_documents_category", "category"),
+    )
 
     id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid4
@@ -80,6 +83,9 @@ class Document(Base):
     external_id: Mapped[str | None] = mapped_column(String(128))
     title: Mapped[str] = mapped_column(String(255))
     issuer: Mapped[str | None] = mapped_column(String(255))
+    # 制度主题分类（如银行监管、证券法规、保险制度、支付清算等）与标签列表
+    category: Mapped[str | None] = mapped_column(String(64), default=None)
+    tags: Mapped[list[str] | None] = mapped_column(JSON, default=None)
     # 导入脚本等系统操作没有操作人
     created_by: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", name="fk_documents_created_by")

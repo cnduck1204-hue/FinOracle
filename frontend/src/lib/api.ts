@@ -13,8 +13,21 @@ import type {
   DocumentListQuery,
   DocumentSummary,
   DocumentVersion,
+  FavoriteCreateInput,
+  FavoriteFolderCreateInput,
+  FavoriteFolderSummary,
+  FavoriteFolderUpdateInput,
+  FavoriteItem,
+  FavoriteKind,
+  FavoriteListResponse,
+  FavoriteLookupResponse,
+  FavoriteTreeResponse,
+  FavoriteUpdateInput,
   ImportJob,
   JobListQuery,
+  LibraryDocumentSummary,
+  LibraryFacetsResponse,
+  LibraryListQuery,
   Page,
   ParseOptions,
   PipelineInfo,
@@ -661,6 +674,8 @@ export class AuthClient {
     const params = pageParams(query)
     if (query.q?.trim()) params.set('q', query.q.trim())
     if (query.published !== undefined) params.set('published', String(query.published))
+    if (query.category?.trim()) params.set('category', query.category.trim())
+    if (query.tag?.trim()) params.set('tag', query.tag.trim())
     const result = await this.protectedRequest<unknown>(`/admin/documents?${params}`)
     return validatePage(result, hasId, '制度列表')
   }
@@ -671,13 +686,60 @@ export class AuthClient {
 
   async updateDocument(
     id: string,
-    input: { title?: string; issuer?: string | null },
+    input: { title?: string; issuer?: string | null; category?: string | null; tags?: string[] },
   ): Promise<DocumentSummary> {
     const result = await this.protectedRequest<unknown>(documentPath(id), {
       method: 'PATCH',
       body: JSON.stringify(input),
     })
     return validateRecord(result, '制度信息')
+  }
+
+  async getLibraryFacets(signal?: AbortSignal): Promise<LibraryFacetsResponse> {
+    const result = await this.protectedRequest<LibraryFacetsResponse | null>('/library/facets', {
+      signal,
+    })
+    if (!result || !Array.isArray(result.categories) || !Array.isArray(result.tags))
+      throw new ApiError('制度分类信息未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result
+  }
+
+  async listLibraryDocuments(
+    query: LibraryListQuery = {},
+    signal?: AbortSignal,
+  ): Promise<Page<LibraryDocumentSummary>> {
+    const params = pageParams(query)
+    if (query.q?.trim()) params.set('q', query.q.trim())
+    if (query.category?.trim()) params.set('category', query.category.trim())
+    if (query.tag?.trim()) params.set('tag', query.tag.trim())
+    if (query.validity_status) params.set('validity_status', query.validity_status)
+    if (query.include_repealed !== undefined)
+      params.set('include_repealed', String(query.include_repealed))
+    const result = await this.protectedRequest<unknown>(`/library?${params}`, { signal })
+    return validatePage(result, hasId, '制度库列表')
+  }
+
+  async getLibraryDocument(id: string): Promise<LibraryDocumentSummary> {
+    return validateRecord(
+      await this.protectedRequest<unknown>(`/library/${encodeURIComponent(id)}`),
+      '制度详情',
+    )
+  }
+
+  async listLibraryChunks(
+    documentId: string,
+    query: { page?: number; page_size?: number; q?: string } = {},
+  ): Promise<Page<DocumentChunk>> {
+    const params = pageParams(query)
+    if (query.q?.trim()) params.set('q', query.q.trim())
+    const result = await this.protectedRequest<unknown>(
+      `/library/${encodeURIComponent(documentId)}/chunks?${params}`,
+    )
+    return validatePage(
+      result,
+      (item) => typeof (item as { id?: unknown } | null)?.id === 'number',
+      '条文列表',
+    )
   }
 
   async listVersions(documentId: string): Promise<DocumentVersion[]> {
@@ -784,6 +846,126 @@ export class AuthClient {
 
   async deleteVersion(id: string): Promise<void> {
     await this.protectedRequest<void>(versionPath(id), { method: 'DELETE' }, SLOW_ADMIN_TIMEOUT_MS)
+  }
+
+  async getFavoriteTree(signal?: AbortSignal): Promise<FavoriteTreeResponse> {
+    const result = await this.protectedRequest<FavoriteTreeResponse | null>('/favorites/tree', {
+      signal,
+    })
+    if (!result || !Array.isArray(result.folders))
+      throw new ApiError('收藏夹目录未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result
+  }
+
+  async lookupFavorites(keys: string[], signal?: AbortSignal): Promise<FavoriteLookupResponse> {
+    const cleaned = keys.map((key) => key.trim()).filter(Boolean)
+    if (!cleaned.length) return { items: {} }
+    const params = new URLSearchParams({ keys: cleaned.join(',') })
+    const result = await this.protectedRequest<FavoriteLookupResponse | null>(
+      `/favorites/lookup?${params}`,
+      { signal },
+    )
+    if (!result || typeof result.items !== 'object' || result.items === null)
+      throw new ApiError('收藏状态未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result
+  }
+
+  async listFavorites(
+    query: {
+      folder_id?: string | null
+      scope?: 'root' | 'all'
+      q?: string
+      kind?: FavoriteKind | null
+      signal?: AbortSignal
+    } = {},
+  ): Promise<FavoriteListResponse> {
+    const params = new URLSearchParams()
+    if (query.folder_id) params.set('folder_id', query.folder_id)
+    if (query.scope) params.set('scope', query.scope)
+    if (query.q?.trim()) params.set('q', query.q.trim())
+    if (query.kind) params.set('kind', query.kind)
+    const suffix = params.toString() ? `?${params}` : ''
+    const result = await this.protectedRequest<FavoriteListResponse | null>(`/favorites${suffix}`, {
+      signal: query.signal,
+    })
+    if (!result || !Array.isArray(result.folders) || !Array.isArray(result.items))
+      throw new ApiError('收藏列表未能正确返回，请稍后重试。', 502, 'INVALID_RESPONSE')
+    return result
+  }
+
+  async createFavoriteFolder(input: FavoriteFolderCreateInput): Promise<FavoriteFolderSummary> {
+    const result = await this.protectedRequest<unknown>('/favorites/folders', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+    return validateRecord(result, '收藏文件夹')
+  }
+
+  async updateFavoriteFolder(
+    id: string,
+    input: FavoriteFolderUpdateInput,
+  ): Promise<FavoriteFolderSummary> {
+    const result = await this.protectedRequest<unknown>(
+      `/favorites/folders/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      },
+    )
+    return validateRecord(result, '收藏文件夹')
+  }
+
+  async deleteFavoriteFolder(id: string): Promise<void> {
+    await this.protectedRequest<void>(`/favorites/folders/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async createFavorite(input: FavoriteCreateInput): Promise<FavoriteItem> {
+    const result = await this.protectedRequest<unknown>('/favorites', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+    return validateRecord(result, '收藏项')
+  }
+
+  async updateFavorite(id: string, input: FavoriteUpdateInput): Promise<FavoriteItem> {
+    const result = await this.protectedRequest<unknown>(`/favorites/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    })
+    return validateRecord(result, '收藏项')
+  }
+
+  async deleteFavorite(id: string): Promise<void> {
+    await this.protectedRequest<void>(`/favorites/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async batchDeleteFavorites(input: { folder_ids?: string[]; item_ids?: string[] }): Promise<void> {
+    await this.protectedRequest<void>('/favorites/batch-delete', {
+      method: 'POST',
+      body: JSON.stringify({
+        folder_ids: input.folder_ids ?? [],
+        item_ids: input.item_ids ?? [],
+      }),
+    })
+  }
+
+  async batchMoveFavorites(input: {
+    folder_ids?: string[]
+    item_ids?: string[]
+    target_folder_id: string | null
+  }): Promise<void> {
+    await this.protectedRequest<void>('/favorites/batch-move', {
+      method: 'POST',
+      body: JSON.stringify({
+        folder_ids: input.folder_ids ?? [],
+        item_ids: input.item_ids ?? [],
+        target_folder_id: input.target_folder_id,
+      }),
+    })
   }
 
   async logout(): Promise<void> {

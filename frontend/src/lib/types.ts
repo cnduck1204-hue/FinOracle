@@ -76,6 +76,8 @@ export interface DocumentSummary {
   external_id: string | null
   title: string
   issuer: string | null
+  category?: string | null
+  tags?: string[]
   version_count: number
   published_version: VersionBrief | null
   latest_version: VersionBrief | null
@@ -88,6 +90,55 @@ export interface DocumentListQuery {
   page_size?: number
   q?: string
   published?: boolean
+  category?: string
+  tag?: string
+}
+
+export interface FacetCount {
+  name: string
+  count: number
+}
+
+export interface LibraryFacetsResponse {
+  total_documents: number
+  total_chunks: number
+  categories: FacetCount[]
+  tags: FacetCount[]
+  validity_counts: Record<string, number>
+}
+
+export interface LibraryPublishedVersion {
+  id: string
+  document_number: string | null
+  version_note: string | null
+  published_date: string | null
+  effective_date: string | null
+  validity_status: ValidityStatus
+  validity_checked_at: string | null
+  source_url: string | null
+  page_count: number | null
+  chunk_count: number
+  published_at: string | null
+}
+
+export interface LibraryDocumentSummary {
+  id: string
+  title: string
+  issuer: string | null
+  category: string | null
+  tags: string[]
+  version: LibraryPublishedVersion
+  updated_at: string
+}
+
+export interface LibraryListQuery {
+  page?: number
+  page_size?: number
+  q?: string
+  category?: string
+  tag?: string
+  validity_status?: ValidityStatus
+  include_repealed?: boolean
 }
 
 export interface ImportJob {
@@ -209,6 +260,8 @@ export interface SearchInput {
   top_k?: number
   pipeline?: string
   document_ids?: string[]
+  include_repealed?: boolean
+  validity_status?: ValidityStatus
 }
 
 export interface SearchHit {
@@ -283,9 +336,18 @@ interface ChatVersionCitation extends ChatVersionReference {
 
 export type ChatCitation = ChatChunkCitation | ChatVersionCitation
 
+export type ChatConfidenceLevel = 'high' | 'medium' | 'low'
+
+export interface ChatConfidence {
+  score: number
+  level: ChatConfidenceLevel
+  reasons: string[]
+}
+
 export interface ChatAnswerContent {
   answer: string
   citations: ChatCitation[]
+  confidence?: ChatConfidence | null
 }
 
 export interface ChatOutcome extends ChatAnswerContent {
@@ -350,3 +412,110 @@ export type ChatStreamUpdate =
   | { type: 'tool'; step: ChatToolStep }
   | { type: 'answer_delta'; text: string }
   | { type: 'paragraph'; text: string; citations: ChatCitation[] }
+
+export type FavoriteKind = 'qa' | 'chunk' | 'link'
+
+export interface FavoriteFolderSummary {
+  id: string
+  parent_id: string | null
+  name: string
+  position: number
+  item_count: number
+  subfolder_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface FavoriteTreeResponse {
+  folders: FavoriteFolderSummary[]
+  root_item_count: number
+  total_item_count: number
+}
+
+export interface FavoriteChunkPayload {
+  chunk_id: number
+  document_id: string
+  document_title: string
+  issuer: string | null
+  version_id: string
+  document_number: string | null
+  version_note: string | null
+  validity_status: ValidityStatus
+  effective_date: string | null
+  source_url: string | null
+  chapter: string
+  section: string
+  article: string
+  heading: string
+  page_start: number | null
+  page_end: number | null
+  content: string
+}
+
+export interface FavoriteQaPayload {
+  session_id: string
+  turn_id: string
+  question: string
+  answer: string
+  status: ChatOutcome['status']
+  citations: ChatCitation[]
+}
+
+export interface FavoriteLinkPayload {
+  url: string
+}
+
+export interface FavoriteItem {
+  id: string
+  folder_id: string | null
+  kind: FavoriteKind
+  title: string
+  subtitle: string
+  note: string | null
+  source_key: string | null
+  payload: FavoriteChunkPayload | FavoriteQaPayload | FavoriteLinkPayload | Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface FavoriteListResponse {
+  folders: FavoriteFolderSummary[]
+  items: FavoriteItem[]
+}
+
+export interface FavoriteSourceMatch {
+  id: string
+  folder_id: string | null
+}
+
+export interface FavoriteLookupResponse {
+  items: Record<string, FavoriteSourceMatch>
+}
+
+export interface FavoriteFolderCreateInput {
+  name: string
+  parent_id?: string | null
+}
+
+export interface FavoriteFolderUpdateInput {
+  name?: string
+  parent_id?: string | null
+}
+
+export interface FavoriteCreateInput {
+  kind: FavoriteKind
+  folder_id?: string | null
+  title?: string
+  note?: string | null
+  chunk_id?: number
+  session_id?: string
+  turn_id?: string
+  url?: string
+}
+
+export interface FavoriteUpdateInput {
+  title?: string
+  note?: string | null
+  folder_id?: string | null
+  url?: string
+}

@@ -319,11 +319,27 @@ export function metadataPatch(
   return patch as Partial<VersionMetadata>
 }
 
+export function parseTagInput(raw: string): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const part of raw.replace(/[，、]/g, ',').split(',')) {
+    const trimmed = part.trim()
+    if (!trimmed) continue
+    const key = trimmed.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(trimmed)
+  }
+  return result.slice(0, 20)
+}
+
 export function buildImportForm(input: {
   file: File
   documentId?: string
   title?: string
   issuer?: string
+  category?: string
+  tags?: string
   metadata: MetadataForm
   options: ParseOptions
 }): FormData {
@@ -333,6 +349,9 @@ export function buildImportForm(input: {
   else {
     form.set('title', input.title?.trim() ?? '')
     if (input.issuer?.trim()) form.set('issuer', input.issuer.trim())
+    if (input.category?.trim()) form.set('category', input.category.trim())
+    const parsedTags = parseTagInput(input.tags ?? '')
+    if (parsedTags.length) form.set('tags', parsedTags.join(','))
   }
   for (const [key, value] of Object.entries(input.metadata))
     if (value.trim()) form.set(key, value.trim())

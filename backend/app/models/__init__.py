@@ -5,6 +5,7 @@ from app.models.document import (
     DocumentVersion,
     VersionIndex,
 )
+from app.models.favorite import Favorite, FavoriteFolder
 from app.models.import_job import ImportJob
 from app.models.user import User
 
@@ -14,6 +15,8 @@ __all__ = [
     "Document",
     "DocumentChunk",
     "DocumentVersion",
+    "Favorite",
+    "FavoriteFolder",
     "ImportJob",
     "User",
     "VersionIndex",

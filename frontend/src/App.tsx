@@ -4,13 +4,13 @@ import { Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router
 import { useAuth } from './auth/AuthProvider'
 import { Brand } from './components/Brand'
 import { AccountPage } from './pages/AccountPage'
-import { AdminDocumentsPage } from './pages/AdminDocumentsPage'
 import { AdminDocumentVersionsPage } from './pages/AdminDocumentVersionsPage'
 import { AdminImportDetailPage } from './pages/AdminImportDetailPage'
 import { AdminImportNewPage } from './pages/AdminImportNewPage'
 import { AdminImportsPage } from './pages/AdminImportsPage'
 import { AdminUsersPage } from './pages/AdminUsersPage'
-import { ComingSoonPage } from './pages/ComingSoonPage'
+import { FavoritesPage } from './pages/FavoritesPage'
+import { LibraryPage } from './pages/LibraryPage'
 import { SearchPage } from './pages/SearchPage'
 
 const WorkspacePage = lazy(() =>
@@ -55,6 +55,7 @@ function RequireAdmin() {
     <Outlet />
   ) : (
     <section className="empty-page">
+      <div className="hatch-bar" aria-hidden="true" />
       <div className="empty-symbol">
         <ShieldCheck size={26} strokeWidth={1.6} aria-hidden="true" />
       </div>
@@ -111,7 +112,10 @@ export function App() {
           <Route path="/account" element={<AccountPage />} />
           <Route element={<RequireAdmin />}>
             <Route path="/admin/users" element={<AdminUsersPage />} />
-            <Route path="/admin/documents" element={<AdminDocumentsPage />} />
+            <Route
+              path="/admin/documents"
+              element={<Navigate to="/library?view=manage" replace />}
+            />
             <Route
               path="/admin/documents/:documentId/versions"
               element={<AdminDocumentVersionsPage />}
@@ -120,9 +124,9 @@ export function App() {
             <Route path="/admin/imports/new" element={<AdminImportNewPage />} />
             <Route path="/admin/imports/:jobId" element={<AdminImportDetailPage />} />
           </Route>
-          <Route path="/library" element={<ComingSoonPage module="library" />} />
+          <Route path="/library" element={<LibraryPage />} />
           <Route path="/search" element={<SearchPage />} />
-          <Route path="/favorites" element={<ComingSoonPage module="favorites" />} />
+          <Route path="/favorites" element={<FavoritesPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/chat" replace />} />

@@ -1,177 +1,69 @@
 # FinOracle 后端
 
-Python 3.11+、FastAPI、SQLAlchemy AsyncSession、MySQL 8.4、Redis 7.4，文档原件存放在 S3 API 对象存储中。以下命令均在 `backend/` 目录执行。
+Python 3.11+、FastAPI、SQLAlchemy AsyncSession、MySQL 8.4、Redis 7.4、S3 兼容对象存储（Silo）与 Milvus。以下命令均在 `backend/` 目录执行。
 
 ## 运行
 
-完整开发环境：
+启动完整后端环境：
 
 ```sh
 python3 scripts/init_env.py
 docker compose up --build -d --wait
 ```
 
-默认 API 端口为 8001，MySQL 为 3306，Redis 为 6379，Gotenberg（文档格式转换）为 3000，对象存储为 9000（Web 控制台 9001，用 `S3_ACCESS_KEY` / `S3_SECRET_KEY` 登录），Milvus 向量库为 19530；都仅绑定本机。首次启动需拉取约 420 MB 的 Gotenberg 镜像、约 230 MB 的对象存储镜像和约 1.4 GB 的 Milvus 镜像。
+默认本机端口：API `8001`、MySQL `3306`、Redis `6379`、Gotenberg `3000`、对象存储 `9000`（控制台 `9001`）、Milvus `19530`。API 启动时自动运行 `alembic upgrade head`，`worker` 在后台执行解析与向量化，`dsh` 通过内部网络处理问答轮次。
 
-`dsh` 随 Compose 启动，通过私有网络接收 API 的问答轮次。使用问答需在 `.env` 填写 `DEEPSEEK_API_KEY` 和检索所需的 `DASHSCOPE_API_KEY`。旧环境可重新运行初始化命令补齐 `CHAT_DSH_TOKEN`，然后一起重建 `api` 和 `dsh`。 [问答配置与升级](dsh/README.md)
-
-对象存储使用 Silo（`pgsty/silo`）：MinIO 社区版已停止维护，官方镜像不再公开提供，Silo 是它的维护分支，接口与数据格式相同。应用只通过 S3 API 访问，换成其他 S3 兼容存储只需修改 `S3_*` 配置。2026-11-05 之前生成的 `.env` 缺少 `S3_SECRET_KEY`，Compose 会提示该变量必填而拒绝启动；在 `backend/.env` 末尾追加一行随机值即可：
-
-```sh
-printf '\nS3_SECRET_KEY=%s\n' "$(python3 -c 'import secrets; print(secrets.token_hex(20))')" >> .env
-```
-
-API 启动时运行 `alembic upgrade head`。可用 `docker compose logs api` 查看启动情况。`worker` 服务使用同一镜像，在 API 健康后启动，后台执行文档解析与向量化；它只拿到数据库、对象存储、格式转换与向量化配置，没有认证密钥。处理情况用 `docker compose logs worker` 查看。向量化需要阿里云百炼（DashScope）的 API Key：在启动 Compose 的终端或 `backend/.env` 中设置 `DASHSCOPE_API_KEY`（终端中的同名变量优先）；未设置或无效时解析照常完成，索引任务失败并提示 `EMBEDDING_AUTH_FAILED` 或缺少密钥，更正后重启 worker 并在任务列表中重试；检索接口同样需要它，未设置或无效时返回 503 `SEARCH_UNAVAILABLE`（更正后重启 api）。
-
-本机调试应用需要安装 [uv](https://docs.astral.sh/uv/)，使用容器中的数据库和缓存：
+本机调试（需安装 [uv](https://docs.astral.sh/uv/)）：
 
 ```sh
 uv sync --locked
-docker compose up -d --wait mysql redis minio milvus
+docker compose up -d --wait mysql redis minio milvus gotenberg
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-此时接口文档位于 `http://127.0.0.1:8000/docs`。从项目根目录调用时使用 `uv --directory backend run ...`，确保读取正确的 `.env`。调试问答需要同时运行可由宿主机访问的 `dsh`。 [本机问答调试](dsh/README.md#本机调试)
+本机调试 worker 时先停止容器 worker（`docker compose stop worker`），再运行 `uv run python -m app.worker`。本机调试问答见 [dsh 本机调试](dsh/README.md#本机调试)。停止环境用 `docker compose down`（不要加 `--volumes` 以免清除持久卷）。
 
-本机调试旧格式文件时，先用 `docker compose up -d --wait gotenberg` 启动转换服务，并将 `.env` 中的 `GOTENBERG_URL` 设为 `http://127.0.0.1:3000`。本机 worker 在另一个终端运行。Compose 中的 worker 也会认领同一张任务表，调试本机 worker 时先执行 `docker compose stop worker`：
+## 核心配置
 
-```sh
-uv run python -m app.worker
-```
-
-停止完整环境用 `docker compose down`，数据会保留。不要为普通重启加 `--volumes`。已有 MySQL 持久卷的账号密码不会随着 `.env` 自动改变；更换密码需同步修改数据库账号。
-
-## 接口
-
-默认前缀为 `/api/v1`。`GET /health` 检查进程存活，`GET /ready` 检查 MySQL 与 Redis 是否就绪。认证、管理、文档入库、检索和问答的请求与响应见 [API 交接](../docs/backend-handoff.md)。运行实例的契约可在 `/docs` 或 `/openapi.json` 查看。
-
-## 配置
-
-`.env.example` 列出常用开发配置。首次执行 `scripts/init_env.py` 时，脚本为本地 `.env` 生成独立随机凭据。再次运行可给已有 `.env` 补齐缺失或留空的 `CHAT_DSH_TOKEN`。真实 `.env` 不入库。
-
-配置按性质分三处：随部署机器变化的配置（含密钥与路径）定义在 `app/core/config.py`，值写在 `.env` 或环境变量中，其中 `Settings` 为应用配置（包含 `DatabaseSettings` 的数据库配置），`ParsingSettings` 为不含密钥、命令行也能加载的解析配置，`StorageSettings` 为对象存储配置，`WorkerSettings` 为 worker 的数据库与调度配置（worker 不加载 `Settings`，因此不需要 JWT 密钥）；解析算法的阈值和默认值在 `app/rag/parsing/options.py`，随代码修改和测试，不读环境变量；单次请求可调的解析参数见 `app/rag/parsing/parameters.py`。
+完整模板见 `.env.example`，首次运行 `scripts/init_env.py` 会生成随机本地凭据（再次运行可补齐缺失的 `CHAT_DSH_TOKEN`）。
 
 | 配置 | 默认值 / 说明 |
 | --- | --- |
-| `API_PORT` | Compose 对外端口，默认 8001 |
-| `API_V1_PREFIX` | `/api/v1` |
-| `MYSQL_PASSWORD` | 必填；`MYSQL_ROOT_PASSWORD` 仅供 Compose 初始化使用 |
-| `JWT_SECRET_KEY` | 必填，至少 32 字符，拒绝常见占位值 |
-| `JWT_ACCESS_TOKEN_MINUTES` | 30 |
-| `JWT_REFRESH_TOKEN_DAYS` | 7 |
-| `LOGIN_MAX_FAILURES` | 5 |
-| `LOGIN_LOCK_SECONDS` | 900 |
-| `OPENAPI_ENABLED` | `true`；设为 `false` 关闭文档入口 |
-| `ADMIN_USERNAME`、`ADMIN_EMAIL`、`ADMIN_PASSWORD` | 启动时创建首个管理员，或同步指定管理员的密码。三项同时提供或全部留空 |
-| `GOTENBERG_URL` | 可选；`.doc`、`.rtf`、`.odt` 交给 Gotenberg 转为 PDF。Compose 为 API 容器设为 `http://gotenberg:3000`，本机 `uvicorn` 或命令行用 `http://127.0.0.1:3000` |
-| `SOFFICE_PATH` | 可选；未配置 Gotenberg 时使用本机 LibreOffice `soffice`，为空时从 PATH 查找 |
-| `CONVERSION_TIMEOUT_SECONDS` | 单个文档格式转换超时，默认 120；Compose 中 Gotenberg 自身超时设为 110 秒 |
-| `S3_ENDPOINT_URL` | 对象存储地址，默认 `http://127.0.0.1:9000`；Compose 为 API 容器设为 `http://minio:9000` |
-| `S3_ACCESS_KEY`、`S3_SECRET_KEY` | 访问密钥；密钥必填（8 位以上），初始化脚本生成 40 位随机值。Compose 同时用作对象存储的根凭据，生产应改用只能访问文档桶的独立密钥 |
-| `S3_BUCKET` | 文档桶，默认 `finoracle-documents`；首次写入时自动创建 |
-| `S3_REGION` | `us-east-1` |
-| `MINIO_PORT`、`MINIO_CONSOLE_PORT` | Compose 对外端口，默认 9000、9001 |
-| `WORKER_POLL_SECONDS` | worker 空闲时的轮询间隔，默认 2 秒 |
-| `JOB_LEASE_SECONDS` | 任务租约，默认 60 秒（至少 20）；执行中每 5 秒续租，worker 退出后租约到期，任务由其他 worker 接手 |
-| `AUTO_APPROVE_PARSED` | `true`：完整解析的版本自动向量化；`false` 时须调用批准接口。含待 OCR 图片的版本总是需要人工批准 |
-| `DASHSCOPE_API_KEY` | 向量化密钥；worker 用于入库，API 用于检索时向量化问题 |
-| `DEEPSEEK_API_KEY`、`CHAT_MODEL`、`CHAT_BASE_URL` | 由 `dsh` 使用的提供方密钥、模型和地址，默认连接 `https://api.deepseek.com` 的 `deepseek-flash` |
-| `CHAT_DSH_TOKEN` | FastAPI 和 `dsh` 共享的私有令牌，由初始化脚本生成 |
-| `CHAT_DSH_CONTEXT_WINDOW` | `dsh` 的上下文窗口，默认 32768 tokens |
-| `CHAT_DSH_URL` | 私有桥接地址，Compose 默认为 `http://dsh:8091`，本机 FastAPI 默认为 `http://127.0.0.1:8091` |
-| `EMBEDDING_BASE_URL`、`EMBEDDING_MODEL`、`EMBEDDING_DIMENSION` | 默认北京地域、`text-embedding-v4`、1024 维；离线入库与在线查询必须一致，更换后写入新的 Milvus 集合 |
-| `MILVUS_URI`、`MILVUS_PORT` | 向量库地址（容器内 `http://milvus:19530`）与 Compose 对外端口 |
+| `API_PORT` / `API_V1_PREFIX` | `8001` / `/api/v1` |
+| `MYSQL_PASSWORD` / `JWT_SECRET_KEY` | 必填；JWT 密钥至少 32 字符 |
+| `JWT_ACCESS_TOKEN_MINUTES` / `JWT_REFRESH_TOKEN_DAYS` | `30` / `7` |
+| `LOGIN_MAX_FAILURES` / `LOGIN_LOCK_SECONDS` | `5` / `900` |
+| `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | 三项同填或同空；启动时创建首个管理员或同步密码 |
+| `S3_ENDPOINT_URL` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` / `S3_BUCKET` | S3 兼容对象存储，默认桶 `finoracle-documents` |
+| `GOTENBERG_URL` / `SOFFICE_PATH` | `.doc` / `.rtf` / `.odt` 转 PDF（优先 Gotenberg，其次本机 LibreOffice） |
+| `AUTO_APPROVE_PARSED` | `true` 时完整解析自动进入向量化；`needs_ocr` 仍需人工批准 |
+| `DASHSCOPE_API_KEY` | 阿里云百炼向量化密钥（worker 入库与 API 检索均需要） |
+| `EMBEDDING_MODEL` / `EMBEDDING_DIMENSION` / `MILVUS_URI` | 默认 `text-embedding-v4`、1024 维；更换模型后写入新 Milvus 集合 |
+| `DEEPSEEK_API_KEY` / `CHAT_MODEL` / `CHAT_BASE_URL` | `dsh` 模型配置，默认 `deepseek-flash` |
+| `CHAT_DSH_TOKEN` / `CHAT_DSH_URL` / `CHAT_DSH_CONTEXT_WINDOW` | FastAPI 与 `dsh` 桥接配置，默认上下文窗口 32768 tokens |
 
-首次生成开发配置时，脚本会写入用户名 `admin`、邮箱 `admin@example.com` 和随机 `ADMIN_PASSWORD`。数据库尚无管理员时，API 会在启动时创建此账号。
+## 文档解析 CLI
 
-要通过重新部署修改已有管理员的密码，将 `ADMIN_USERNAME` 设为该账号当前的用户名，再更新 `ADMIN_PASSWORD`。API 启动时会比对密码，只在不同时更新并使该账号的旧会话失效。`ADMIN_EMAIL` 用于创建首个管理员，三项留空可关闭这项启动行为。密码须为 8–128 个字符，并同时包含英文字母和数字。
-
-## 文档解析
-
-`app/rag/parsing/` 将 PDF、Word（.docx/.doc）、RTF、ODT、TXT/Markdown 和图片（PNG/JPG/TIFF 等）解析为带来源位置的文本切片，结果暂不入库。接口和命令行是两个入口，共用 `services/document_parsing.py` 与 `app/rag/parsing/parameters.py` 中的参数校验，输出格式相同：
-
-```text
-POST /admin/documents/parse ─┐
-                             ├─► services/document_parsing ─► rag/parsing（解析 → OCR → 清洗 → 切片）
-scripts/parse_document.py ───┘
-```
-
-| 参数（表单字段 / 命令行） | 默认 | 说明 |
-| --- | --- | --- |
-| `file` / 位置参数 | 必填 | 待解析文件 |
-| `ocr` / `--ocr` | `auto` | `auto` 按 RapidOCR、Tesseract 的顺序选已安装的实现，`rapidocr`、`tesseract` 指定，`none` 不识别图片 |
-| `chunker` / `--chunker` | `auto` | `auto`、`article`、`item`、`length` |
-| `max_chunk_chars` / `--max-chars` | 800 | 100–4000 |
-| `chunk_overlap` / `--overlap` | 100 | 须小于 `max_chunk_chars`，仅按长度切片时生效 |
-| `include_blocks` / `--blocks` | false | 是否返回清洗后的文本块 |
-
-接口需要管理员 Access Token，请求体为 `multipart/form-data`。上传内容写入临时文件，解析后立即删除；同一进程内一次只解析一个文档，并发请求依次处理，OCR 模型首次使用时加载并复用。用 Apifox 联调：
-
-1. 在 `.env` 设置 `ADMIN_USERNAME`、`ADMIN_EMAIL`、`ADMIN_PASSWORD` 后启动后端。Compose 环境已包含 Gotenberg 与 Tesseract，可解析 `.doc` 等格式和扫描件。需要更高的 OCR 准确率时在本机运行（`uv sync --locked --extra ocr` 后启动 `uvicorn`，见“运行”，并在 `.env` 设置 `GOTENBERG_URL=http://127.0.0.1:3000`），`auto` 会优先使用 RapidOCR。
-2. 导入 `http://127.0.0.1:8001/openapi.json`（本机 `uvicorn` 为 8000 端口），文件字段会显示为文件类型。
-3. 调用 `POST /auth/login` 获取管理员 `access_token`，在解析接口的 Auth 中选择 Bearer Token。
-4. Body 选 form-data，`file` 选择文件，其他字段按需填写后发送。
-
-前端 8080 代理对 `/api/v1/admin/` 路径放宽到请求体 55 MB、读超时 180 秒，其他路径仍为 1 MB、20 秒。大文件或扫描件的解析预览耗时可能更长，直接请求 API 端口。
-
-命令行不需要数据库和登录：
+`app/rag/parsing/` 支持 PDF、Word（`.docx`/`.doc`）、RTF、ODT、TXT/Markdown 与常见图片，按「解析 → 按需 OCR → 清洗 → 切片」输出带页码与条号的结构化切片。命令行无需数据库：
 
 ```sh
 uv sync --locked --extra ocr
 uv run python scripts/parse_document.py <文件> --output result.json
 ```
 
-流程为文档解析 → 按需 OCR → 文本汇合清洗 → 切片：
-
-- PDF 由 pdfplumber 按页读取文本层与带框表格。文本层少于 20 字且含图片的页按扫描页整页 OCR；文本页中面积不小于 10% 且无文本层覆盖的插图单独 OCR，识别结果按位置插回正文。
-- `.docx` 按正文顺序读取标题、段落、表格和内嵌图片。`.doc`、`.rtf`、`.odt` 先转为 PDF 再按 PDF 解析，因此带有页码，但不保留 Word 标题级别，无边框表格按普通文本处理。配置 `GOTENBERG_URL` 时由 Gotenberg 转换（常驻服务，单份约 0.5 秒），否则使用本机 LibreOffice（`SOFFICE_PATH`，命令行也可用 `--soffice`）。转换前核对文件头：`.doc` 接受 Word 97–2003、RTF、ZIP 以及网站导出的 HTML/MHT/XML，`.rtf`、`.odt` 须为对应格式；LibreOffice 会把无法识别的内容当纯文本转换出乱码，这类文件直接返回 `DOCUMENT_INVALID`。
-- 转换结果与原件的差异：分页取决于转换环境的字体（Gotenberg 使用 Noto CJK），页码可能与原件打印页码相差一页；实测 Gotenberg（LibreOffice 26.8）在避头标点换行处偶有丢失标点，样本 3581 字中丢失 1 个顿号，正文文字一致。
-- OCR 有两种实现，`auto` 按顺序选择已安装的一种：RapidOCR（PaddleOCR 模型 + ONNX Runtime，可选依赖 `ocr`，开发机 CPU 约 2–3 秒/页，首次使用另需数秒加载模型）中文识别更准；Tesseract（系统安装 `tesseract-ocr` 与 `tesseract-ocr-chi-sim`，按单一文本块识别，约 0.3–0.6 秒/页）更轻量，API 镜像内置。测试样本上 RapidOCR 逐字正确，Tesseract 字符一致率约 96%，主要误差为全角括号识别成 `〈`、`)` 及个别错字。未安装或识别失败时结果状态为 `needs_ocr`，不会当作已完成。
-- 清洗只对康熙部首、兼容汉字和全角字母数字做 NFKC，保留中文全角标点；去除汉字间排版空格、页码、过半页面重复的页眉页脚及重复内容。
-- 切片默认自动选择：含两条以上“第X条”时按章 / 节 / 条，否则含两项以上“一、”时按一级序号，其余按标题和 800 字长度（100 字重叠）。行首“第七条规定的……”等引用不会被当作新条；超长条文按句拆分并以 `part` / `part_count` 标记。
-
-输出包含文件 SHA-256、状态、切片（章、节、条号或序号、标题路径、PDF 页码范围、内容来源 text/ocr）与统计、警告；未要求文本块时 `blocks` 为 null。PDF 页码为 1 起算的物理页序号，Word 与纯文本没有页码。需持久化并建立索引时，使用 `POST /admin/imports` 交由 worker 处理。
-
-```text
-app/rag/parsing/
-├── pipeline.py    parse_file：串联下列各阶段
-├── options.py     ParseOptions：解析阈值与默认值
-├── models.py      阶段间数据结构与类型
-├── errors.py      全部错误码
-├── text_utils.py  中文编号数字与空白处理（清洗、切片共用）
-├── cleaning.py    文本汇合与清洗
-├── converters/    ConverterProvider：gotenberg、libreoffice（旧格式转 PDF）
-├── parsers/       ParserProvider：pdf、word、text、image
-├── ocr/           OCRProvider：rapid_ocr、tesseract
-└── chunkers/      ChunkerProvider：structured（条 / 一级序号）、length
-```
-
-三类 Provider 各有一个目录：`base.py` 定义基类，每个实现一个模块，目录的 `__init__.py` 登记可用实现并负责按名称创建。新增实现只需添加模块并登记一行：
-
-- OCR：继承 `OCRProvider`，实现 `read_lines` 返回原始识别行（空行和低置信度行由基类过滤）；依赖可选时覆盖 `available`。加入 `OCR_PROVIDERS` 后即可用 `--ocr <名称>`，`auto` 按登记顺序选第一个已安装的实现。
-- 文档格式：继承 `ParserProvider`，声明 `file_types` 并实现 `parse`，用 `ParsedDocument.add_text` / `add_image` 按阅读顺序输出，加入 `PARSERS`。
-- 条文体例：继承 `StructuredChunker`，实现 `match_label` 识别行首标签，加入 `STRUCTURED_CHUNKERS`；章节、编号递增和超长拆分由基类处理。其他切法继承 `ChunkerProvider` 实现 `split`。
+常用参数：`--ocr auto|rapidocr|tesseract|none`、`--chunker auto|article|item|length`、`--max-chars 800`、`--overlap 100`、`--blocks`。
 
 ## 代码组织
 
-- `api/`：请求模型绑定、认证依赖、响应和路由。
-- `services/`：注册、登录、刷新、退出的业务规则及事务边界；`document_parsing.py` 为解析预览接口和 CLI 共用的服务；`document_imports.py`（导入、重试、重新解析、删除）与 `document_library.py`（制度、版本、切片、任务查询与原件读取）为入库管理，`document_publishing.py` 负责发布与下架，错误码集中在 `document_errors.py`。
-- `repositories/`、`models/`、`db/`：数据库访问、表模型和连接生命周期；`db/engine.py` 提供不读取配置的连接工厂，供 worker 使用。
-- `security/`：线程池中的 Argon2 运算、JWT 签发和校验。
-- `cache/`：失败计数、会话及令牌轮换的原子操作。
-- `core/`、`middleware/`：配置、统一错误、JSON 日志和请求追踪。
-- `rag/parsing/`：文档解析、OCR、清洗与切片；Parser、OCR、Chunker 各占一个目录，按基类实现并登记，结构见上文。
-- `worker/`：后台任务。`runtime.py` 负责认领（`FOR UPDATE SKIP LOCKED`，连接使用 READ COMMITTED）、续租、进度、重试与失败处理；`parse.py` 和 `index.py` 使用默认入库方案处理解析与向量化，`pipeline.py` 处理附加方案。设计与状态流转见[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)第 7 节。
-- `rag/indexing/`：向量化（`EmbeddingProvider`，默认 DashScope）、向量库（`VectorStore`，默认 Milvus，含 BM25 稀疏向量）与向量化文本规则；worker 的 `index.py` 为索引任务。
-- `rag/pipelines/` 组合解析、索引与检索。API 内检索和问答共用进程内缓存的注册表，worker 按进程装配入库方案。
-- `rag/retrieval/` 提供文本混合检索和视觉检索。`services/search.py` 限定已发布版本并补全引用信息。
-- `agent/` 与 `services/chat_sessions.py` 管理问答提示词、制度工具、引用校验和业务会话。每轮上下文来自 MySQL 中已交付的问答。`dsh/` 执行模型与工具循环并持久化运行日志。
-- `storage/`：对象存储接口 `ObjectStorage` 与 S3 API 实现，对象键规则在 `storage/keys.py`。方法为同步调用（API 中经线程池调用）；对象不存在时抛出 `FileNotFoundError`，存储不可用返回 503 `STORAGE_UNAVAILABLE`。
-
-MySQL 保存用户、问答会话、问答事件，以及入库所需的制度、版本、切片和导入任务。入库表结构见[入库方案](../docs/design/2026-11-05-document-ingestion/README.md)第 6 节。Redis 保存带有效期的登录会话状态。登录会话创建、刷新轮换与退出分别通过 Lua 脚本原子执行。
-
-会话命名空间为 `finoracle:v2:auth:*`，会话按有效期自动过期。
+- `app/api/`：路由、鉴权依赖与请求绑定
+- `app/services/`：认证、用户管理、制度库、个人收藏、文档入库/发布、检索与会话服务
+- `app/repositories/`、`app/models/`、`app/db/`：SQLAlchemy 表模型与数据访问
+- `app/security/`、`app/cache/`：Argon2、JWT 与 Redis 原子会话（命名空间 `finoracle:v2:auth:*`）
+- `app/storage/`：S3 对象存储封装与对象键规则
+- `app/rag/`：`parsing/`（解析/OCR/清洗/切片）、`indexing/`（向量化与 Milvus）、`retrieval/`（混合/视觉检索）与 `pipelines/`
+- `app/agent/`：问答提示词、制度工具、引用校验与 `dsh` 桥接客户端
+- `app/worker/`：基于 `FOR UPDATE SKIP LOCKED` 与租约续期的后台任务执行器
 
 ## 验证
 
@@ -182,34 +74,17 @@ uv run ruff format --check .
 uv run pytest -q
 ```
 
-单元和接口测试不要求数据库、Redis或真实凭据。解析测试在运行时生成 PDF、Word 和图片样本；真实 OCR 用例仅在安装 `ocr` 可选依赖或 Tesseract 时运行，否则跳过。测试不读取本机 `backend/.env`，本地配置不影响结果。pytest 默认检查整个 `app` 的行覆盖率至少 80%，CI 同样执行此门槛。当前上游 Starlette/httpx 与 AnyIO 会发出弃用提示，不影响测试结果。
-
-完整真实环境检查（先启动上述 Compose 环境）：
+单元测试不依赖外部服务，行覆盖率门槛为 80%。真实环境集成测试（需先启动 Compose）：
 
 ```sh
 uv run python -m tests.integration
-```
-
-另含一次独立全新安装检查：
-
-```sh
 uv run python -m tests.integration --fresh-install
 ```
 
-只验证无外部密钥的流程时，可在测试环境以 `AUTO_APPROVE_PARSED=false` 启动 worker。导入检查会在解析完成后继续，依赖 DashScope 的向量化和检索检查会跳过。
-
-检查覆盖真实 HTTP 认证流程、事务回滚、Redis 回复丢失、刷新重放、并发轮换、退出登录与会话隔离，以及对象存储的读写、自动建桶和凭据错误（在临时桶中进行，结束后删除），入库表的数据库约束，worker 的并发认领与租约接管，和经 Compose 中 worker 执行的真实解析任务（.doc 经 Gotenberg 转换、损坏文件直接失败），以及通过 API 的完整入库流程（上传、解析、读取切片与原件、重复上传、重新解析、删除）；最后一项检查经 DashScope 与 Milvus 完成自动批准、向量化、BM25 与向量检索、发布替换、下架与重新上线，以及经 API 的混合检索（未发布不可检索、两路名次、制度范围、下架后立即不可检索）；这两项需要有效的 `DASHSCOPE_API_KEY`，未设置时跳过。每项使用唯一测试数据并清理自己的记录。首次安装检查创建临时 Compose 项目和卷，只删除自己创建的临时资源。
-
-Postman Collection 与空白凭据环境位于 [postman/](postman/)。仅在可丢弃本地环境显式开启后运行，默认管理员流程关闭；账号与令牌串联说明见 [API 交接](../docs/backend-handoff.md)。
-
-性能探针需要本地 `.env` 与 API 使用相同数据库、Redis 和 JWT 配置，在创建本轮测试账号后自动清理：
+性能探针（仅允许回环地址，自动清理本轮生成的临时账号）：
 
 ```sh
 uv run python scripts/benchmark.py --allow-disposable-users --samples 20 --warmup 3 --environment local-compose
 ```
 
-可选管理员读写测量通过 `BENCHMARK_ADMIN_IDENTIFIER` 与 `BENCHMARK_ADMIN_PASSWORD` 环境变量启用，仅操作本轮生成用户。输出每接口样本数、P50/P95 和环境信息；500ms 为目标，实际性能以测量报告为准。添加 `--max-p95-ms 500` 可在超阈值时返回失败。
-
-## 相关文档
-
-前端运行见[前端说明](../frontend/README.md)。请求、响应及错误处理见 [API 交接](../docs/backend-handoff.md)。问答链路见[问答架构](../docs/superpowers/specs/2026-11-19-llm-architecture-design.md)。
+更多接口与架构细节见 [API 说明](../docs/api.md)、[文档入库架构](../docs/document-ingestion.md) 与 [LLM 架构](../docs/llm-architecture.md)。

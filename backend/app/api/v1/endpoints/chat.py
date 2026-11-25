@@ -145,10 +145,15 @@ async def ask_stream(
         )
         if turn.replay is not None:
             if turn.replay.state == "completed" and turn.replay.result is not None:
+                replay_exclude = (
+                    {"confidence"} if turn.replay.result.confidence is None else None
+                )
                 yield prepared.frame(
                     "done",
                     {
-                        **turn.replay.result.model_dump(mode="json"),
+                        **turn.replay.result.model_dump(
+                            mode="json", exclude=replay_exclude
+                        ),
                         "turn_id": str(turn.id),
                     },
                 )
@@ -206,7 +211,11 @@ async def ask_stream(
                             message="当前轮次已结束，请重新提问",
                             status_code=409,
                         )
-                    data = {**update.model_dump(mode="json"), "turn_id": str(turn.id)}
+                    done_exclude = {"confidence"} if update.confidence is None else None
+                    data = {
+                        **update.model_dump(mode="json", exclude=done_exclude),
+                        "turn_id": str(turn.id),
+                    }
                 yield prepared.frame(event, data)
     except Exception as error:
         if isinstance(error, AppException):

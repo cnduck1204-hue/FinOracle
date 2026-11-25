@@ -46,6 +46,10 @@ async function search(page: Page, value: string) {
   await page.getByLabel('用户名或邮箱搜索').fill(value)
   await page.getByRole('button', { name: '查询', exact: true }).click()
 }
+async function selectCustomOption(page: Page, label: string, optionLabel: string) {
+  await page.getByLabel(label, { exact: true }).click()
+  await page.getByRole('option', { name: optionLabel, exact: true }).click()
+}
 
 test.beforeAll(async ({ request }) => {
   admin = JSON.parse(helper('./create_admin.py', JSON.stringify({ username: name(), password })))
@@ -144,7 +148,7 @@ test('groups import stages by version and keeps each failed job actionable', asy
   await expect(grouped.getByRole('button', { name: '重试', exact: true })).toBeInViewport()
   await grouped.getByRole('button', { name: '重试', exact: true }).click()
   await expect(list.getByText('排队中', { exact: true })).toBeVisible()
-  await page.getByLabel('任务类型').selectOption('index')
+  await selectCustomOption(page, '任务类型', '建索引')
   await page.getByRole('button', { name: '查询', exact: true }).click()
   await expect(list.getByRole('link', { name: '查看校验' })).toHaveCount(1)
 })
@@ -155,7 +159,7 @@ for (const mobile of [false, true]) {
   }) => {
     if (mobile) await page.setViewportSize({ width: 375, height: 812 })
     await openAdmin(page)
-    await page.getByLabel('每页条数').selectOption('10')
+    await selectCustomOption(page, '每页条数', '10 条')
     await search(page, prefix)
     const table = page.getByRole('table', { name: '用户列表', exact: true })
     await expect(table.getByRole('row')).toHaveCount(11)
@@ -163,8 +167,8 @@ for (const mobile of [false, true]) {
     await page.getByRole('button', { name: '下一页', exact: true }).click()
     await expect(table.getByRole('row')).toHaveCount(4)
     await expect(page.getByText('02 / 002', { exact: true })).toBeVisible()
-    await page.getByLabel('账号角色', { exact: true }).selectOption('user')
-    await page.getByLabel('账号状态', { exact: true }).selectOption('disabled')
+    await selectCustomOption(page, '账号角色', '普通用户')
+    await selectCustomOption(page, '账号状态', '已禁用')
     await page.getByRole('button', { name: '查询', exact: true }).click()
     await expect(table.getByRole('row')).toHaveCount(2)
     await expect(page.getByText('01 / 001', { exact: true })).toBeVisible()
@@ -174,8 +178,8 @@ for (const mobile of [false, true]) {
     await expect(detail.getByText('已禁用', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '关闭详情', exact: true }).click()
     await page.getByRole('button', { name: '重置', exact: true }).click()
-    await expect(page.getByLabel('账号角色', { exact: true })).toHaveValue('')
-    await expect(page.getByLabel('账号状态', { exact: true })).toHaveValue('')
+    await expect(page.getByLabel('账号角色', { exact: true })).toHaveAttribute('data-value', '')
+    await expect(page.getByLabel('账号状态', { exact: true })).toHaveAttribute('data-value', '')
     await search(page, admin.username)
     const row = table.getByRole('row').filter({ hasText: admin.username })
     await expect(row.getByText('管理员账号受保护')).toBeVisible()
@@ -208,7 +212,7 @@ test('cancel, disable and re-enable synchronize details and reject old logins', 
     await signIn(userPage, target.username)
     await expect(userPage).toHaveURL(/\/chat$/)
     await openAdmin(page)
-    await page.getByLabel('账号状态', { exact: true }).selectOption('active')
+    await selectCustomOption(page, '账号状态', '已启用')
     await search(page, target.username)
     const table = page.getByRole('table', { name: '用户列表', exact: true })
     await expect(table.locator('tbody tr')).toHaveCount(1)
@@ -232,7 +236,7 @@ test('cancel, disable and re-enable synchronize details and reject old logins', 
     await userPage.reload()
     await expect(userPage.getByRole('heading', { name: '查制度，核出处' })).toBeVisible()
     await expect(userPage.getByRole('link', { name: '登录', exact: true })).toBeVisible()
-    await page.getByLabel('账号状态', { exact: true }).selectOption('disabled')
+    await selectCustomOption(page, '账号状态', '已禁用')
     await page.getByRole('button', { name: '查询', exact: true }).click()
     await table.getByRole('button', { name: '启用', exact: true }).click()
     await page.getByRole('button', { name: '确认启用', exact: true }).click()

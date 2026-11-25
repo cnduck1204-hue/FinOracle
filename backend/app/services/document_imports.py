@@ -104,6 +104,8 @@ async def create_import(
                     id=document_id,
                     title=form.title,
                     issuer=form.issuer,
+                    category=form.category,
+                    tags=form.tags or None,
                     created_by=user.id,
                 )
                 await DocumentRepository(session).add(document)

@@ -79,23 +79,45 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
-  # 切片向量与 BM25 关键词索引。单容器运行：内嵌 etcd、数据存本地卷（官方 standalone_embed.sh 的配置）
+  # Milvus 元数据与服务发现（独立运行，避免 Milvus 2.6 内嵌 etcd 重启选主竞态）
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.23
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command:
+      - etcd
+      - --name=default
+      - --data-dir=/var/lib/milvus/etcd
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-client-urls=http://0.0.0.0:2379
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+  # 切片向量与 BM25 关键词索引。数据存本地卷，元数据由独立 etcd 服务提供
   milvus:
     image: milvusdb/milvus:v2.6.23
     command: ["milvus", "run", "standalone"]
     security_opt:
       - seccomp:unconfined
     environment:
-      ETCD_USE_EMBED: "true"
-      ETCD_DATA_DIR: /var/lib/milvus/etcd
-      ETCD_CONFIG_PATH: /milvus/configs/embedEtcd.yaml
+      ETCD_USE_EMBED: "false"
+      ETCD_ENDPOINTS: etcd:2379
       COMMON_STORAGETYPE: local
       DEPLOY_MODE: STANDALONE
     configs:
-      - source: milvus_embed_etcd
-        target: /milvus/configs/embedEtcd.yaml
       - source: milvus_user
         target: /milvus/configs/user.yaml
+    depends_on:
+      etcd:
+        condition: service_healthy
     ports:
       - "127.0.0.1:${MILVUS_PORT:-19530}:19530"
     volumes:
@@ -110,6 +132,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        APT_MIRROR: ${APT_MIRROR:-deb.debian.org}
     image: finoracle-api:local
     init: true
     ports:
@@ -189,6 +213,8 @@ services:
   dsh:
     build:
       context: ./dsh
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
     image: finoracle-dsh:local
     environment:
       FINORACLE_DSH_TOKEN: "${CHAT_DSH_TOKEN:?Run python3 backend/scripts/init_env.py first}"
@@ -284,13 +310,6 @@ volumes:
   milvus_data:
   visual_models:
 configs:
-  milvus_embed_etcd:
-    content: |
-      listen-client-urls: http://0.0.0.0:2379
-      advertise-client-urls: http://0.0.0.0:2379
-      quota-backend-bytes: 4294967296
-      auto-compaction-mode: revision
-      auto-compaction-retention: '1000'
   milvus_user:
     content: |
       # Extra config to override default milvus.yaml

@@ -19,10 +19,11 @@
   display: flex;
   align-items: center;
   flex: 0 0 var(--topbar-height);
-  margin: 0 -16px 22px -15px;
+  margin: 0 -16px 20px -15px;
   padding: 0 24px;
   background: var(--surface-deep);
   border-right: 1px solid var(--border-dark);
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
 }
 
 .nav-scroll {
@@ -81,6 +82,10 @@
   color: var(--signal-ink);
 }
 
+.nav-new-session:hover:not(:disabled) .nav-index {
+  color: inherit;
+}
+
 .nav-item {
   display: flex;
   align-items: center;
@@ -111,18 +116,15 @@
 }
 
 .nav-item.active {
-  background: linear-gradient(135deg, var(--signal) calc(100% - var(--control-cut)), transparent 0);
+  background: var(--signal);
   border-color: var(--signal-ink);
   color: var(--signal-ink);
   font-weight: 600;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
 }
 
 .nav-item.active svg {
   color: var(--signal-ink);
-}
-
-.nav-item-soon {
-  color: var(--ink-muted);
 }
 
 .nav-item small {
@@ -191,6 +193,24 @@
   border-top: 1px solid var(--border);
 }
 
+.sidebar-guest-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ink-subtle);
+}
+
+.sidebar-guest-meta strong {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--ink-muted);
+}
+
 .account-link {
   display: flex;
   align-items: center;
@@ -237,10 +257,10 @@
   height: 34px;
   border-radius: var(--radius);
   background: var(--surface-deep);
-  color: var(--ink-on-dark);
+  color: var(--signal);
   font-family: var(--font-display);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 760;
   flex-shrink: 0;
 }
 
@@ -270,6 +290,7 @@
   justify-content: space-between;
   gap: 16px;
   background: var(--surface-deep);
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
   color: var(--ink-on-dark);
 }
 
@@ -319,8 +340,13 @@
 
 .app-topbar .status-pill {
   border-color: var(--border-dark);
-  background: transparent;
+  background: rgb(255 255 255 / 4%);
   color: var(--ink-on-dark-muted);
+}
+
+.app-topbar .btn-primary:hover:not(:disabled) {
+  background: #ffffff;
+  color: #161616;
 }
 
 .app-topbar :focus-visible {
@@ -364,6 +390,10 @@
   height: calc(100dvh - var(--topbar-height));
   min-height: 0;
   background: var(--surface);
+}
+
+.app-main-workspace:has(.workspace-welcome) {
+  background: var(--hatch), var(--canvas);
 }
 
 .page-content.page-content-workspace {
@@ -414,13 +444,12 @@
 .page-kicker {
   display: inline-block;
   margin-bottom: 6px;
-  font-size: 13px;
+  font-size: 11.5px;
   font-family: var(--font-display);
-  font-weight: 720;
-  font-stretch: 120%;
-  letter-spacing: 0.19em;
+  font-weight: 600;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--ink-secondary);
+  color: var(--ink-subtle);
 }
 
 .page-kicker::before {
@@ -429,10 +458,10 @@
 
 .page-heading h1 {
   font-family: var(--font-sans);
-  font-size: clamp(28px, 3.6vw, 42px);
-  font-weight: 800;
-  line-height: 1.17;
-  letter-spacing: -0.02em;
+  font-size: clamp(28px, 3.4vw, 40px);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
   color: var(--ink);
   margin-bottom: 10px;
   overflow-wrap: anywhere;
@@ -486,8 +515,9 @@
 .empty-page {
   max-width: 480px;
   margin: 56px auto;
-  padding: 40px 32px;
+  padding: 0 32px 36px;
   border: 1px solid var(--border);
+  border-top: 3px solid var(--ink);
   border-radius: var(--radius);
   background: var(--surface);
   display: flex;
@@ -495,6 +525,11 @@
   align-items: center;
   text-align: center;
   gap: 14px;
+}
+
+.empty-page > .hatch-bar {
+  width: calc(100% + 64px);
+  margin: 0 -32px 18px;
 }
 
 .empty-symbol {
@@ -522,17 +557,6 @@
   line-height: 1.7;
 }
 
-.readiness-badge {
-  display: inline-flex;
-  padding: 3px 10px;
-  border-radius: var(--radius);
-  background: var(--active-bg);
-  border: 1px solid var(--active-border);
-  color: var(--active-ink);
-  font-size: 11.5px;
-  font-weight: 500;
-}
-
 /* Mobile Drawer & Breakpoints */
 @media (max-width: 900px) {
   .sidebar {
@@ -554,7 +578,7 @@
     inset: 0;
     z-index: 35;
     border: 0;
-    background: rgb(25 26 24 / 48%);
+    background: var(--overlay-bg);
   }
 
   .app-topbar,
@@ -594,8 +618,11 @@
   }
 
   .app-topbar-workspace .status-pill {
+    width: 30px;
+    height: 30px;
+    justify-content: center;
     gap: 0;
-    padding: 6px;
+    padding: 0;
     font-size: 0;
   }
 }

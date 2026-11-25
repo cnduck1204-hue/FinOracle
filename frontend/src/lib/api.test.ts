@@ -605,4 +605,193 @@ describe('authentication client', () => {
     expect(client.getSnapshot().user).toBeNull()
     expect(client.getSnapshot().hasSession).toBe(false)
   })
+
+  it('manages favorite folders, items, lookup, and batch operations', async () => {
+    const calls: { url: string; method: string; body: unknown }[] = []
+    const folder = {
+      id: 'folder-1',
+      parent_id: null,
+      name: '银行监管',
+      position: 0,
+      item_count: 1,
+      subfolder_count: 0,
+      created_at: '2026-11-25T00:00:00Z',
+      updated_at: '2026-11-25T00:00:00Z',
+    }
+    const item = {
+      id: 'fav-1',
+      folder_id: 'folder-1',
+      kind: 'link',
+      title: '人民银行',
+      subtitle: 'https://www.pbc.gov.cn',
+      note: null,
+      source_key: null,
+      payload: { url: 'https://www.pbc.gov.cn' },
+      created_at: '2026-11-25T00:00:00Z',
+      updated_at: '2026-11-25T00:00:00Z',
+    }
+    const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
+      calls.push({ url, method, body })
+      if (url.endsWith('/auth/login')) return json(pair())
+      if (url.endsWith('/favorites/tree'))
+        return json({ folders: [folder], root_item_count: 0, total_item_count: 1 })
+      if (url.includes('/favorites/lookup?'))
+        return json({ items: { 'chunk:12': { id: 'fav-1', folder_id: 'folder-1' } } })
+      if (url.includes('/favorites?folder_id=folder-1')) return json({ folders: [], items: [item] })
+      if (url.endsWith('/favorites/folders') && method === 'POST') return json(folder, 201)
+      if (url.endsWith('/favorites/folders/folder-1') && method === 'PATCH') return json(folder)
+      if (url.endsWith('/favorites') && method === 'POST') return json(item, 201)
+      if (url.endsWith('/favorites/fav-1') && method === 'PATCH') return json(item)
+      return new Response(null, { status: 204 })
+    })
+
+    const client = new AuthClient({ fetcher, storage: storage() })
+    await client.login('alice', 'Password123')
+
+    const tree = await client.getFavoriteTree()
+    expect(tree.total_item_count).toBe(1)
+
+    expect(await client.lookupFavorites([])).toEqual({ items: {} })
+    const lookup = await client.lookupFavorites(['chunk:12'])
+    expect(lookup.items['chunk:12']?.id).toBe('fav-1')
+
+    const listed = await client.listFavorites({ folder_id: 'folder-1' })
+    expect(listed.items).toHaveLength(1)
+
+    await client.createFavoriteFolder({ name: '银行监管' })
+    await client.updateFavoriteFolder('folder-1', { name: '银行监管制度' })
+    await client.createFavorite({ kind: 'link', title: '人民银行', url: 'https://www.pbc.gov.cn' })
+    await client.updateFavorite('fav-1', { title: '央行' })
+    await client.batchMoveFavorites({ item_ids: ['fav-1'], target_folder_id: null })
+    await client.batchDeleteFavorites({ folder_ids: ['folder-1'], item_ids: ['fav-1'] })
+    await client.deleteFavorite('fav-1')
+    await client.deleteFavoriteFolder('folder-1')
+
+    expect(calls.some((call) => call.url.endsWith('/favorites/batch-move'))).toBe(true)
+    expect(calls.some((call) => call.url.endsWith('/favorites/batch-delete'))).toBe(true)
+  })
+
+  it('loads library facets, filtered documents, clauses, and validity-aware search', async () => {
+    const doc = {
+      id: 'doc-1',
+      title: '商业银行资本管理办法',
+      issuer: '金融监管总局',
+      category: '银行监管',
+      tags: ['资本充足率'],
+      version: {
+        id: 'ver-1',
+        document_number: '金规〔2023〕4号',
+        version_note: '2024年版',
+        published_date: null,
+        effective_date: '2024-01-01',
+        validity_status: 'effective',
+        validity_checked_at: null,
+        source_url: null,
+        page_count: 10,
+        chunk_count: 12,
+        published_at: '2026-11-25T00:00:00Z',
+      },
+      updated_at: '2026-11-25T00:00:00Z',
+    }
+    const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/auth/login')) return json(pair())
+      if (url.endsWith('/library/facets'))
+        return json({
+          total_documents: 1,
+          total_chunks: 12,
+          categories: [{ name: '银行监管', count: 1 }],
+          tags: [{ name: '资本充足率', count: 1 }],
+          validity_counts: { effective: 1 },
+        })
+      if (url.includes('/library/doc-1/chunks'))
+        return json({ items: [{ id: 1, content: '第五条' }], total: 1, page: 1, page_size: 15 })
+      if (url.endsWith('/library/doc-1')) return json(doc)
+      if (url.includes('/library?')) return json({ items: [doc], total: 1, page: 1, page_size: 15 })
+      if (url.endsWith('/search')) {
+        const body = JSON.parse(String(init?.body))
+        expect(body.include_repealed).toBe(true)
+        return json({ query: body.query, pipeline: 'structured-hybrid', results: [] })
+      }
+      return new Response(null, { status: 404 })
+    })
+
+    const client = new AuthClient({ fetcher, storage: storage() })
+    await client.login('alice', 'Password123')
+
+    const facets = await client.getLibraryFacets()
+    expect(facets.categories[0]?.name).toBe('银行监管')
+
+    const page = await client.listLibraryDocuments({
+      category: '银行监管',
+      tag: '资本充足率',
+      include_repealed: false,
+    })
+    expect(page.items[0]?.id).toBe('doc-1')
+    expect((await client.getLibraryDocument('doc-1')).title).toBe('商业银行资本管理办法')
+    expect((await client.listLibraryChunks('doc-1', { q: '第五条' })).total).toBe(1)
+    await client.search({ query: '资本', include_repealed: true })
+  })
+
+  it('preserves confidence on streaming chat done events', async () => {
+    const confidence = {
+      score: 96,
+      level: 'high' as const,
+      reasons: ['已通过后端条文、文号与时效一致性核验'],
+    }
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const enc = new TextEncoder()
+        controller.enqueue(
+          enc.encode(
+            `id: 1\nevent: turn\ndata: ${JSON.stringify({ session_id: 's1', turn_id: 't1' })}\n\n` +
+              `id: 2\nevent: done\ndata: ${JSON.stringify({
+                status: 'answered',
+                answer: '依据规定[1]。',
+                citations: [
+                  {
+                    kind: 'chunk',
+                    number: 1,
+                    chunk_id: 10,
+                    document: { id: 'd1', title: '办法', issuer: '央行' },
+                    version: {
+                      id: 'v1',
+                      document_number: null,
+                      version_note: null,
+                      published_date: null,
+                      effective_date: null,
+                      validity_status: 'effective',
+                      source_url: null,
+                    },
+                    chapter: '',
+                    section: '',
+                    article: '第一条',
+                    heading: '',
+                    page_start: 1,
+                    page_end: 1,
+                  },
+                ],
+                confidence,
+                turn_id: 't1',
+              })}\n\n`,
+          ),
+        )
+        controller.close()
+      },
+    })
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      if (String(input).endsWith('/auth/login')) return json(pair())
+      return new Response(stream, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    })
+    const client = new AuthClient({ fetcher, storage: storage() })
+    await client.login('alice', 'Password123')
+    const result = await client.askStream('测试', () => undefined, undefined, 's1')
+    expect(result.confidence).toEqual(confidence)
+  })
 })

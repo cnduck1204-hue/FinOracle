@@ -48,10 +48,22 @@ async def list_documents(
     published: Annotated[
         bool | None, Query(description="true 只看有发布版本的制度，false 只看没有的")
     ] = None,
+    category: Annotated[
+        str | None, Query(min_length=1, max_length=64, description="按主题分类筛选")
+    ] = None,
+    tag: Annotated[
+        str | None, Query(min_length=1, max_length=32, description="按标签筛选")
+    ] = None,
 ) -> DocumentPage:
     response.headers["Cache-Control"] = "no-store"
     return await document_library.list_documents(
-        session, page=page, page_size=page_size, q=q, published=published
+        session,
+        page=page,
+        page_size=page_size,
+        q=q,
+        published=published,
+        category=category,
+        tag=tag,
     )
 
 

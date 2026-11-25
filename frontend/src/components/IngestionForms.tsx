@@ -1,5 +1,6 @@
 import { CHUNKER_OPTIONS, OCR_OPTIONS, VALIDITY_LABELS, type MetadataForm } from '../lib/ingestion'
 import type { ParseOptions, ValidityStatus } from '../lib/types'
+import { Select } from './Select'
 
 const VALIDITY_VALUES = Object.keys(VALIDITY_LABELS) as ValidityStatus[]
 
@@ -66,17 +67,15 @@ export function MetadataFields({
       <Field {...bind('effective_date')} label="生效日期" type="date" />
       <div className="ingest-field">
         <label htmlFor={`${idPrefix}-validity_status`}>时效状态</label>
-        <select
+        <Select
           id={`${idPrefix}-validity_status`}
           value={value.validity_status}
-          onChange={(event) => onChange({ ...value, validity_status: event.target.value })}
-        >
-          {VALIDITY_VALUES.map((status) => (
-            <option key={status} value={status}>
-              {VALIDITY_LABELS[status]}
-            </option>
-          ))}
-        </select>
+          options={VALIDITY_VALUES.map((status) => ({
+            value: status,
+            label: VALIDITY_LABELS[status],
+          }))}
+          onChange={(validity_status) => onChange({ ...value, validity_status })}
+        />
         <small>未核实时保持“时效待核验”，不会显示为现行有效。</small>
       </div>
       <Field {...bind('validity_checked_at')} label="时效核查日期" type="date" />
@@ -105,31 +104,27 @@ export function ParseOptionFields({
     <div className="ingest-grid">
       <div className="ingest-field">
         <label htmlFor={`${idPrefix}-ocr`}>OCR 方式</label>
-        <select
+        <Select
           id={`${idPrefix}-ocr`}
           value={value.ocr}
-          onChange={(event) => onChange({ ...value, ocr: event.target.value })}
-        >
-          {OCR_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          options={OCR_OPTIONS.map((option) => ({
+            value: option.value,
+            label: option.label,
+          }))}
+          onChange={(ocr) => onChange({ ...value, ocr })}
+        />
       </div>
       <div className="ingest-field">
         <label htmlFor={`${idPrefix}-chunker`}>切片方式</label>
-        <select
+        <Select
           id={`${idPrefix}-chunker`}
           value={value.chunker}
-          onChange={(event) => onChange({ ...value, chunker: event.target.value })}
-        >
-          {CHUNKER_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          options={CHUNKER_OPTIONS.map((option) => ({
+            value: option.value,
+            label: option.label,
+          }))}
+          onChange={(chunker) => onChange({ ...value, chunker })}
+        />
       </div>
       <Field
         id={`${idPrefix}-max`}

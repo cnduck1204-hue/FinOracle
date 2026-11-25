@@ -15,6 +15,13 @@ from pydantic import (
 from app.schemas.search import SearchDocument, SearchVersion
 
 ChatStatus = Literal["answered", "partial", "insufficient_evidence"]
+ChatConfidenceLevel = Literal["high", "medium", "low"]
+
+
+class ChatConfidence(BaseModel):
+    score: int = Field(ge=0, le=100)
+    level: ChatConfidenceLevel
+    reasons: list[str] = Field(default_factory=list)
 
 
 class ChatRequest(BaseModel):
@@ -111,6 +118,7 @@ class ChatResponse(BaseModel):
     status: ChatStatus
     answer: str
     citations: list[ChatCitation] = Field(default_factory=list)
+    confidence: ChatConfidence | None = None
 
 
 ChatTurnEnd = Literal["completed", "interrupted", "failed"]

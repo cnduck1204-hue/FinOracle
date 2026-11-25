@@ -26,6 +26,13 @@ class SearchRequest(BaseModel):
     pipeline: str | None = Field(
         default=None, max_length=64, description="检索方案；不填使用默认方案"
     )
+    include_repealed: bool = Field(
+        default=False,
+        description="是否包含已废止的制度条文；默认过滤已废止信息并优先返回现行有效条文",
+    )
+    validity_status: ValidityStatus | None = Field(
+        default=None, description="限定单一时效状态；填写时覆盖 include_repealed"
+    )
 
 
 class SearchDocument(BaseModel):

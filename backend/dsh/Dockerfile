@@ -1,7 +1,9 @@
 FROM node:24-bookworm-slim
 
+ARG NPM_REGISTRY=https://registry.npmjs.org
+
 WORKDIR /app
-RUN npm install --no-audit --no-fund --ignore-scripts @deepseek-ai/dsh@0.2.2-rc.5 \
+RUN npm install --registry="$NPM_REGISTRY" --no-audit --no-fund --ignore-scripts @deepseek-ai/dsh@0.2.2-rc.5 \
     && install -d -o node -g node /var/lib/finoracle-dsh
 COPY bridge.mjs profile.yml ./
 

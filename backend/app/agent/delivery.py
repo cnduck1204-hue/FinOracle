@@ -7,7 +7,12 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.articles import article_label
-from app.agent.citations import CitationBuilder, EvidenceId, insufficient
+from app.agent.citations import (
+    CitationBuilder,
+    EvidenceId,
+    compute_confidence,
+    insufficient,
+)
 from app.agent.context import ChatContext
 from app.rag.parsing.text_utils import compact
 from app.schemas.chat import ChatParagraph, ChatRequest, ChatResponse
@@ -346,8 +351,11 @@ async def deliver(
         return [], insufficient()
     if missing or citations.partial:
         paragraphs.append(ChatParagraph(text=_EVIDENCE_GAP, citations=[]))
+    status = "partial" if missing or citations.partial else "answered"
+    delivered_citations = list(citations.citations.values())
     return paragraphs, ChatResponse(
-        status="partial" if missing or citations.partial else "answered",
+        status=status,
         answer="\n\n".join(paragraph.text for paragraph in paragraphs),
-        citations=list(citations.citations.values()),
+        citations=delivered_citations,
+        confidence=compute_confidence(status, paragraphs, delivered_citations),
     )

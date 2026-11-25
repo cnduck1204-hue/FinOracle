@@ -35,6 +35,8 @@ export function AdminImportNewPage() {
   const [dragging, setDragging] = useState(false)
   const [title, setTitle] = useState('')
   const [issuer, setIssuer] = useState('')
+  const [category, setCategory] = useState('')
+  const [tags, setTags] = useState('')
   const [metadata, setMetadata] = useState(EMPTY_METADATA)
   const [options, setOptions] = useState<ParseOptions>(DEFAULT_PARSE_OPTIONS)
   const [problem, setProblem] = useState('')
@@ -81,6 +83,8 @@ export function AdminImportNewPage() {
           documentId: documentId || undefined,
           title,
           issuer,
+          category,
+          tags,
           metadata,
           options,
         }),
@@ -176,6 +180,20 @@ export function AdminImportNewPage() {
                     onChange={setTitle}
                   />
                   <Field id="import-issuer" label="发文机构" value={issuer} onChange={setIssuer} />
+                  <Field
+                    id="import-category"
+                    label="主题分类"
+                    placeholder="例如：银行监管、证券法规、保险制度"
+                    value={category}
+                    onChange={setCategory}
+                  />
+                  <Field
+                    id="import-tags"
+                    label="知识点标签（逗号分隔）"
+                    placeholder="例如：资本充足率, 投资者适当性"
+                    value={tags}
+                    onChange={setTags}
+                  />
                 </div>
               )}
             </section>

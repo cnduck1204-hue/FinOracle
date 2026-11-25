@@ -38,6 +38,8 @@ class DocumentRepository:
         *,
         q: str | None,
         published: bool | None,
+        category: str | None = None,
+        tag: str | None = None,
         offset: int,
         limit: int,
     ) -> tuple[list[Document], int]:
@@ -51,6 +53,8 @@ class DocumentRepository:
                     Document.external_id.contains(q, autoescape=True),
                 )
             )
+        if category:
+            filters.append(Document.category == category)
         if published is not None:
             has_published = (
                 select(DocumentVersion.id)
@@ -61,6 +65,21 @@ class DocumentRepository:
                 .exists()
             )
             filters.append(has_published if published else ~has_published)
+        if tag:
+            needle = tag.strip().casefold()
+            candidates = list(
+                await self.session.scalars(
+                    select(Document)
+                    .where(*filters)
+                    .order_by(Document.updated_at.desc(), Document.id)
+                )
+            )
+            matched = [
+                doc
+                for doc in candidates
+                if any(t.casefold() == needle for t in (doc.tags or ()))
+            ]
+            return matched[offset : offset + limit], len(matched)
         total = await self.session.scalar(
             select(func.count()).select_from(Document).where(*filters)
         )
@@ -120,14 +139,22 @@ class DocumentVersionRepository:
         document_ids: Sequence[UUID] | None = None,
         *,
         ingest: str = DEFAULT_INGEST,
+        include_repealed: bool = True,
+        validity_status: str | None = None,
     ) -> list[UUID]:
-        """已发布版本的 ID，可限定在指定制度内；检索只在这些版本中进行。
+        """已发布版本的 ID，可限定在指定制度与时效状态内；检索只在这些版本中进行。
 
         附加方案只包含该方案索引已就绪的版本；默认方案的就绪状态就是版本状态。
         """
         statement = select(DocumentVersion.id).where(
             DocumentVersion.status == "published"
         )
+        if validity_status is not None:
+            statement = statement.where(
+                DocumentVersion.validity_status == validity_status
+            )
+        elif not include_repealed:
+            statement = statement.where(DocumentVersion.validity_status != "repealed")
         if ingest != DEFAULT_INGEST:
             statement = statement.join(
                 VersionIndex, VersionIndex.version_id == DocumentVersion.id
@@ -135,6 +162,16 @@ class DocumentVersionRepository:
         if document_ids is not None:
             statement = statement.where(DocumentVersion.document_id.in_(document_ids))
         return list(await self.session.scalars(statement))
+
+    async def list_published_with_documents(self) -> list[Row]:
+        """列出全部已发布制度及其当前发布版本，按制度最近更新时间倒序。"""
+        statement = (
+            select(Document, DocumentVersion)
+            .join(DocumentVersion, DocumentVersion.document_id == Document.id)
+            .where(DocumentVersion.status == "published")
+            .order_by(Document.updated_at.desc(), Document.id)
+        )
+        return list((await self.session.execute(statement)).all())
 
     async def match_published_reference(
         self,
@@ -370,13 +407,27 @@ class DocumentChunkRepository:
         ]
 
     async def list_for_version(
-        self, version_id: UUID, *, offset: int, limit: int
+        self,
+        version_id: UUID,
+        *,
+        offset: int,
+        limit: int,
+        q: str | None = None,
     ) -> tuple[list[DocumentChunk], int]:
-        # 校验页对照的是默认方案的切片
-        filters = (
+        # 校验页与制度库对照的是默认方案的切片
+        filters = [
             DocumentChunk.version_id == version_id,
             DocumentChunk.ingest == DEFAULT_INGEST,
-        )
+        ]
+        if q:
+            filters.append(
+                or_(
+                    DocumentChunk.article.contains(q, autoescape=True),
+                    DocumentChunk.heading.contains(q, autoescape=True),
+                    DocumentChunk.chapter.contains(q, autoescape=True),
+                    DocumentChunk.content.contains(q, autoescape=True),
+                )
+            )
         total = await self.session.scalar(
             select(func.count()).select_from(DocumentChunk).where(*filters)
         )

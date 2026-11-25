@@ -79,3 +79,12 @@ def test_ingestion_migration_enforces_version_invariants(migration_probe):
         sql,
     )
     assert "content MEDIUMTEXT NOT NULL" in sql
+
+
+def test_migration_environment_registers_favorites_tables(migration_probe):
+    assert {"favorite_folders", "favorites"} <= set(migration_probe["tables"])
+    sql = migration_probe["sql"]
+    assert re.search(r"CREATE TABLE\s+`?favorite_folders`?\s*\(", sql)
+    assert re.search(r"CREATE TABLE\s+`?favorites`?\s*\(", sql)
+    assert re.search(r"ALTER TABLE\s+`?documents`?\s+ADD COLUMN\s+category", sql)
+    assert re.search(r"ALTER TABLE\s+`?documents`?\s+ADD COLUMN\s+tags", sql)

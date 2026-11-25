@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type HTMLInputAutoCompleteAttribute } from 'react'
 import {
-  ArrowRight,
+  ArrowUpRight,
   Check,
   Eye,
   EyeOff,
@@ -9,7 +9,6 @@ import {
   Mail,
   ShieldCheck,
   UserRound,
-  X,
   type LucideIcon,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
@@ -160,9 +159,11 @@ export function AuthDialog({
 
   return (
     <Dialog
+      kicker={registering ? 'Account Registration' : 'Account Access'}
       title={registering ? '建立你的知识空间。' : '欢迎回来。'}
       busy={pending}
       onClose={onClose}
+      closeLabel="关闭登录弹窗"
     >
       <p>{registering ? '创建 FinOracle 账号。' : '登录 FinOracle，继续使用制度问答。'}</p>
       <div className="auth-tabs" role="group" aria-label="账号操作">
@@ -272,7 +273,11 @@ export function AuthDialog({
             />
           </>
         )}
-        <button className="btn btn-primary btn-lg auth-submit" type="submit" disabled={pending}>
+        <button
+          className="btn btn-primary btn-lg auth-submit arrow-trigger"
+          type="submit"
+          disabled={pending}
+        >
           {pending ? (
             <>
               <LoaderCircle size={16} className="spinner" />
@@ -281,7 +286,7 @@ export function AuthDialog({
           ) : (
             <>
               {registering ? '创建账号' : '进入工作台'}
-              <ArrowRight size={15} aria-hidden="true" />
+              <ArrowUpRight size={15} aria-hidden="true" />
             </>
           )}
         </button>
@@ -290,15 +295,6 @@ export function AuthDialog({
         <ShieldCheck size={14} aria-hidden="true" />
         登录仅在当前标签页有效。使用公共设备后请退出。
       </p>
-      <button
-        type="button"
-        className="icon-button auth-close"
-        aria-label="关闭登录弹窗"
-        disabled={pending}
-        onClick={onClose}
-      >
-        <X size={18} aria-hidden="true" />
-      </button>
     </Dialog>
   )
 }

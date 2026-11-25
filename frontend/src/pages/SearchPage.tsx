@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { ExternalLink, FileSearch, LoaderCircle, Search } from 'lucide-react'
+import { ExternalLink, FileSearch, LoaderCircle, Search, Star, X } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { ValidityTag } from '../components/IngestionUi'
 import { Notice } from '../components/Notice'
+import { SaveFavoriteDialog, type SaveFavoriteTarget } from '../components/SaveFavoriteDialog'
+import { Select } from '../components/Select'
 import { errorMessage } from '../lib/api'
 import { formatDate } from '../lib/dates'
 import { articlePath, pageLabel } from '../lib/ingestion'
 import { useResource } from '../lib/useResource'
-import type { SearchHit, SearchOutcome } from '../lib/types'
+import type { FavoriteSourceMatch, SearchHit, SearchOutcome } from '../lib/types'
 
 const MAX_QUERY = 1000
 
@@ -48,13 +51,28 @@ function PageImage({ hit }: { hit: SearchHit }) {
   )
 }
 
-function Result({ hit, index }: { hit: SearchHit; index: number }) {
+function Result({
+  hit,
+  index,
+  saved,
+  busy,
+  onFavorite,
+  onUnfavorite,
+}: {
+  hit: SearchHit
+  index: number
+  saved: FavoriteSourceMatch | undefined
+  busy: boolean
+  onFavorite: (hit: SearchHit) => void
+  onUnfavorite: (favoriteId: string, sourceKey: string) => void
+}) {
   const { document, version } = hit
   const channels = [
     hit.dense_rank !== null && `语义第 ${hit.dense_rank}`,
     hit.keyword_rank !== null && `关键词第 ${hit.keyword_rank}`,
     hit.visual_rank !== null && `视觉第 ${hit.visual_rank}`,
   ].filter(Boolean)
+  const sourceKey = `chunk:${hit.chunk_id}`
   return (
     <li className="search-result">
       <div className="search-result-head">
@@ -63,7 +81,19 @@ function Result({ hit, index }: { hit: SearchHit; index: number }) {
           <h3>{document.title}</h3>
           <p>{hit.has_image ? '页面图片' : articlePath(hit)}</p>
         </div>
-        <ValidityTag status={version.validity_status} />
+        <div className="search-result-right">
+          <ValidityTag status={version.validity_status} />
+          <button
+            type="button"
+            className={`fav-action-btn${saved ? ' saved' : ''}`}
+            disabled={busy}
+            aria-pressed={Boolean(saved)}
+            onClick={() => (saved ? onUnfavorite(saved.id, sourceKey) : onFavorite(hit))}
+          >
+            <Star size={13} fill={saved ? 'currentColor' : 'none'} aria-hidden="true" />
+            {saved ? '已收藏' : '收藏'}
+          </button>
+        </div>
       </div>
       {hit.has_image ? <PageImage hit={hit} /> : <p className="search-content">{hit.content}</p>}
       <dl className="search-citation">
@@ -117,17 +147,60 @@ function Result({ hit, index }: { hit: SearchHit; index: number }) {
 
 export function SearchPage() {
   const { client } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const scopedDocId = searchParams.get('document_id')
+  const scopedDocTitle = searchParams.get('title')
   const [query, setQuery] = useState('')
   const [topK, setTopK] = useState(8)
+  const [includeRepealed, setIncludeRepealed] = useState(false)
   const pipelines = useResource(() => client.listPipelines(), [client])
   const [chosen, setChosen] = useState('')
   const [outcome, setOutcome] = useState<SearchOutcome | null>(null)
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<unknown>(null)
+  const [savedMap, setSavedMap] = useState<Record<string, FavoriteSourceMatch>>({})
+  const [saveTarget, setSaveTarget] = useState<SaveFavoriteTarget | null>(null)
+  const [favBusyKey, setFavBusyKey] = useState<string | null>(null)
   const latest = useRef(0)
   const options = pipelines.data ?? []
   const selected = options.find((item) => item.name === chosen) ?? options.find((p) => p.default)
   const usedLabel = options.find((item) => item.name === outcome?.pipeline)?.label
+
+  useEffect(() => {
+    const hits = outcome?.results ?? []
+    if (!hits.length) {
+      setSavedMap({})
+      return
+    }
+    const controller = new AbortController()
+    const keys = hits.map((hit) => `chunk:${hit.chunk_id}`)
+    client
+      .lookupFavorites(keys, controller.signal)
+      .then((res) => {
+        if (!controller.signal.aborted) setSavedMap(res.items)
+      })
+      .catch(() => {
+        // Non-blocking: search results remain usable even if lookup fails.
+      })
+    return () => controller.abort()
+  }, [client, outcome])
+
+  async function handleUnfavorite(favoriteId: string, sourceKey: string) {
+    if (favBusyKey) return
+    setFavBusyKey(sourceKey)
+    try {
+      await client.deleteFavorite(favoriteId)
+      setSavedMap((previous) => {
+        const next = { ...previous }
+        delete next[sourceKey]
+        return next
+      })
+    } catch (caught) {
+      setError(caught)
+    } finally {
+      setFavBusyKey(null)
+    }
+  }
 
   async function run() {
     const text = query.trim()
@@ -136,7 +209,13 @@ export function SearchPage() {
     setSearching(true)
     setError(null)
     try {
-      const result = await client.search({ query: text, top_k: topK, pipeline: selected?.name })
+      const result = await client.search({
+        query: text,
+        top_k: topK,
+        pipeline: selected?.name,
+        include_repealed: includeRepealed,
+        ...(scopedDocId ? { document_ids: [scopedDocId] } : {}),
+      })
       if (request === latest.current) setOutcome(result)
     } catch (caught) {
       if (request === latest.current) {
@@ -167,9 +246,19 @@ export function SearchPage() {
         <div className="page-heading-text">
           <span className="page-kicker">Full-Text Search</span>
           <h1>全文检索</h1>
-          <p>在已发布的制度中精确定位条文，结果完整保留版本、条号与页码出处。</p>
+          <p>在已发布的制度中精确定位条文，默认过滤已废止制度并优先返回现行有效条文。</p>
         </div>
       </header>
+
+      {scopedDocId && (
+        <div className="search-scope-banner">
+          <span>当前限定制度：{scopedDocTitle || scopedDocId}</span>
+          <button type="button" className="text-button" onClick={() => setSearchParams({})}>
+            <X size={13} aria-hidden="true" />
+            清除限定
+          </button>
+        </div>
+      )}
 
       <form className="composer search-composer" onSubmit={submit} role="search">
         <div className="composer-top">
@@ -192,32 +281,40 @@ export function SearchPage() {
             {options.length > 1 && selected && (
               <>
                 <label htmlFor="search-pipeline">检索方案</label>
-                <select
+                <Select
                   id="search-pipeline"
+                  size="sm"
+                  inline
                   value={selected.name}
-                  onChange={(event) => setChosen(event.target.value)}
-                >
-                  {options.map((item) => (
-                    <option key={item.name} value={item.name} disabled={!item.available}>
-                      {item.label}
-                      {item.available ? '' : '（不可用）'}
-                    </option>
-                  ))}
-                </select>
+                  options={options.map((item) => ({
+                    value: item.name,
+                    label: `${item.label}${item.available ? '' : '（不可用）'}`,
+                    disabled: !item.available,
+                  }))}
+                  onChange={setChosen}
+                />
               </>
             )}
             <label htmlFor="search-top-k">返回条数</label>
-            <select
+            <Select
               id="search-top-k"
-              value={topK}
-              onChange={(event) => setTopK(Number(event.target.value))}
-            >
-              {[5, 8, 12, 20].map((value) => (
-                <option key={value} value={value}>
-                  {value} 条
-                </option>
-              ))}
-            </select>
+              size="sm"
+              inline
+              value={String(topK)}
+              options={[5, 8, 12, 20].map((value) => ({
+                value: String(value),
+                label: `${value} 条`,
+              }))}
+              onChange={(next) => setTopK(Number(next))}
+            />
+            <label className="lib-toggle search-repealed-toggle">
+              <input
+                type="checkbox"
+                checked={includeRepealed}
+                onChange={(event) => setIncludeRepealed(event.target.checked)}
+              />
+              <span>包含已废止</span>
+            </label>
           </div>
           <button className="btn btn-primary" type="submit" disabled={searching || !query.trim()}>
             {searching ? (
@@ -247,9 +344,26 @@ export function SearchPage() {
           </div>
           {outcome.results.length ? (
             <ol className="search-list">
-              {outcome.results.map((hit, index) => (
-                <Result key={hit.chunk_id} hit={hit} index={index} />
-              ))}
+              {outcome.results.map((hit, index) => {
+                const sourceKey = `chunk:${hit.chunk_id}`
+                return (
+                  <Result
+                    key={hit.chunk_id}
+                    hit={hit}
+                    index={index}
+                    saved={savedMap[sourceKey]}
+                    busy={favBusyKey === sourceKey}
+                    onFavorite={(targetHit) =>
+                      setSaveTarget({
+                        kind: 'chunk',
+                        chunkId: targetHit.chunk_id,
+                        defaultTitle: `${targetHit.document.title} · ${articlePath(targetHit)}`,
+                      })
+                    }
+                    onUnfavorite={(favoriteId, key) => void handleUnfavorite(favoriteId, key)}
+                  />
+                )
+              })}
             </ol>
           ) : (
             <div className="surface-card admin-state">
@@ -257,6 +371,22 @@ export function SearchPage() {
             </div>
           )}
         </section>
+      )}
+
+      {saveTarget && (
+        <SaveFavoriteDialog
+          target={saveTarget}
+          onClose={() => setSaveTarget(null)}
+          onSaved={(saved) => {
+            if (saved.source_key) {
+              setSavedMap((previous) => ({
+                ...previous,
+                [saved.source_key!]: { id: saved.id, folder_id: saved.folder_id },
+              }))
+            }
+            setSaveTarget(null)
+          }}
+        />
       )}
     </>
   )

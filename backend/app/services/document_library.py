@@ -1,6 +1,7 @@
 """制度文档管理：查询与修改制度、版本元数据，分页查看切片与任务，读取原件。"""
 
 import mimetypes
+from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Literal
@@ -28,9 +29,17 @@ from app.schemas.ingestion import (
     DocumentUpdate,
     JobPage,
     JobResponse,
+    ValidityStatus,
     VersionBrief,
     VersionResponse,
     VersionUpdate,
+)
+from app.schemas.library import (
+    FacetCount,
+    LibraryDocumentPage,
+    LibraryDocumentSummary,
+    LibraryFacetsResponse,
+    LibraryPublishedVersion,
 )
 from app.services.document_errors import (
     document_not_found,
@@ -123,6 +132,8 @@ def document_response(
         external_id=document.external_id,
         title=document.title,
         issuer=document.issuer,
+        category=document.category,
+        tags=list(document.tags or ()),
         version_count=len(versions),
         published_version=VersionBrief.model_validate(published) if published else None,
         latest_version=VersionBrief.model_validate(versions[0]) if versions else None,
@@ -139,10 +150,17 @@ async def list_documents(
     page_size: int,
     q: str | None,
     published: bool | None,
+    category: str | None = None,
+    tag: str | None = None,
 ) -> DocumentPage:
     async with session.begin():
         documents, total = await DocumentRepository(session).list_page(
-            q=q, published=published, offset=(page - 1) * page_size, limit=page_size
+            q=q,
+            published=published,
+            category=category,
+            tag=tag,
+            offset=(page - 1) * page_size,
+            limit=page_size,
         )
         versions = await DocumentVersionRepository(session).list_for_documents(
             [document.id for document in documents]
@@ -319,3 +337,175 @@ async def open_version_file(
         media_type=media_type,
         disposition=content_disposition(file_name, media_type),
     )
+
+
+_VALIDITY_ORDER = {
+    "effective": 0,
+    "not_yet_effective": 1,
+    "unknown": 2,
+    "amended": 3,
+    "repealed": 4,
+}
+
+
+def _library_document_summary(
+    document: Document, version: DocumentVersion
+) -> LibraryDocumentSummary:
+    return LibraryDocumentSummary(
+        id=document.id,
+        title=document.title,
+        issuer=document.issuer,
+        category=document.category,
+        tags=list(document.tags or ()),
+        version=LibraryPublishedVersion(
+            id=version.id,
+            document_number=version.document_number,
+            version_note=version.version_note,
+            published_date=version.published_date,
+            effective_date=version.effective_date,
+            validity_status=version.validity_status,
+            validity_checked_at=version.validity_checked_at,
+            source_url=version.source_url,
+            page_count=version.page_count,
+            chunk_count=version.chunk_count,
+            published_at=version.published_at,
+        ),
+        updated_at=document.updated_at,
+    )
+
+
+async def get_library_facets(session: AsyncSession) -> LibraryFacetsResponse:
+    async with session.begin():
+        rows = await DocumentVersionRepository(session).list_published_with_documents()
+    category_counts: Counter[str] = Counter()
+    tag_counts: Counter[str] = Counter()
+    validity_counts: Counter[str] = Counter()
+    total_chunks = 0
+    for document, version in rows:
+        total_chunks += int(version.chunk_count or 0)
+        if document.category:
+            category_counts[document.category] += 1
+        for tag in document.tags or ():
+            tag_counts[tag] += 1
+        validity_counts[version.validity_status] += 1
+    return LibraryFacetsResponse(
+        total_documents=len(rows),
+        total_chunks=total_chunks,
+        categories=[
+            FacetCount(name=name, count=count)
+            for name, count in sorted(
+                category_counts.items(), key=lambda pair: (-pair[1], pair[0])
+            )
+        ],
+        tags=[
+            FacetCount(name=name, count=count)
+            for name, count in sorted(
+                tag_counts.items(), key=lambda pair: (-pair[1], pair[0])
+            )
+        ],
+        validity_counts=dict(validity_counts),
+    )
+
+
+async def list_library_documents(
+    session: AsyncSession,
+    *,
+    page: int,
+    page_size: int,
+    q: str | None = None,
+    category: str | None = None,
+    tag: str | None = None,
+    validity_status: ValidityStatus | None = None,
+    include_repealed: bool = True,
+) -> LibraryDocumentPage:
+    async with session.begin():
+        rows = await DocumentVersionRepository(session).list_published_with_documents()
+    keyword = q.strip().casefold() if q else ""
+    tag_needle = tag.strip().casefold() if tag else ""
+    filtered: list[tuple[Document, DocumentVersion]] = []
+    for document, version in rows:
+        if validity_status is not None and version.validity_status != validity_status:
+            continue
+        if (
+            validity_status is None
+            and not include_repealed
+            and version.validity_status == "repealed"
+        ):
+            continue
+        if category and document.category != category:
+            continue
+        if tag_needle and not any(
+            item.casefold() == tag_needle for item in (document.tags or ())
+        ):
+            continue
+        if keyword:
+            haystack = " ".join(
+                part
+                for part in (
+                    document.title,
+                    document.issuer or "",
+                    document.category or "",
+                    version.document_number or "",
+                    version.version_note or "",
+                    " ".join(document.tags or ()),
+                )
+                if part
+            ).casefold()
+            if keyword not in haystack:
+                continue
+        filtered.append((document, version))
+    # 现行有效制度优先展示，同状态按更新时间倒序
+    filtered.sort(
+        key=lambda pair: (
+            _VALIDITY_ORDER.get(pair[1].validity_status, 9),
+            -pair[0].updated_at.timestamp(),
+            str(pair[0].id),
+        )
+    )
+    offset = (page - 1) * page_size
+    page_rows = filtered[offset : offset + page_size]
+    return LibraryDocumentPage(
+        items=[_library_document_summary(doc, ver) for doc, ver in page_rows],
+        total=len(filtered),
+        page=page,
+        page_size=page_size,
+    )
+
+
+async def get_library_document(
+    document_id: UUID, session: AsyncSession
+) -> LibraryDocumentSummary:
+    async with session.begin():
+        document = await DocumentRepository(session).get(document_id)
+        if document is None:
+            raise document_not_found()
+        version = await DocumentVersionRepository(session).get_published(document_id)
+        if version is None:
+            raise document_not_found()
+        return _library_document_summary(document, version)
+
+
+async def list_library_chunks(
+    document_id: UUID,
+    session: AsyncSession,
+    *,
+    page: int,
+    page_size: int,
+    q: str | None = None,
+) -> ChunkPage:
+    async with session.begin():
+        version = await DocumentVersionRepository(session).get_published(document_id)
+        if version is None:
+            raise document_not_found()
+        chunks, total = await DocumentChunkRepository(session).list_for_version(
+            version.id,
+            offset=(page - 1) * page_size,
+            limit=page_size,
+            q=q.strip() if q else None,
+        )
+        return ChunkPage(
+            items=[ChunkResponse.model_validate(chunk) for chunk in chunks],
+            total=total,
+            page=page,
+            page_size=page_size,
+        )

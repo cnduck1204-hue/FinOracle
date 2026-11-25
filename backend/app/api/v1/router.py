@@ -4,8 +4,10 @@ from app.api.v1.endpoints.admin import router as admin_router
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.chat import router as chat_router
 from app.api.v1.endpoints.documents import router as documents_router
+from app.api.v1.endpoints.favorites import router as favorites_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.imports import router as imports_router
+from app.api.v1.endpoints.library import router as library_router
 from app.api.v1.endpoints.search import router as search_router
 from app.api.v1.endpoints.users import router as users_router
 from app.api.v1.endpoints.versions import router as versions_router
@@ -27,7 +29,9 @@ api_router.include_router(
 )
 
 api_router.include_router(search_router, prefix="/search", tags=["search"])
+api_router.include_router(library_router, prefix="/library", tags=["library"])
 api_router.include_router(chat_router, prefix="/chat", tags=["chat"])
+api_router.include_router(favorites_router, prefix="/favorites", tags=["favorites"])
 
 api_router.include_router(admin_router, prefix="/admin", tags=["admin"])
 

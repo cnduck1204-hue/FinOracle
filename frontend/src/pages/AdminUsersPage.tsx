@@ -3,6 +3,7 @@ import { LoaderCircle, RotateCw, Search, UsersRound, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { LoadFailure, LoadingState, Pagination, Tag } from '../components/IngestionUi'
 import { Notice } from '../components/Notice'
+import { Select } from '../components/Select'
 import { errorMessage } from '../lib/api'
 import { formatDateTime } from '../lib/dates'
 import type { User, UserListQuery, UserPage } from '../lib/types'
@@ -165,47 +166,46 @@ export function AdminUsersPage() {
           </div>
           <div>
             <label htmlFor="admin-role">账号角色</label>
-            <select
+            <Select
               id="admin-role"
               value={filters.role}
-              onChange={(event) =>
-                setFilters({ ...filters, role: event.target.value as typeof filters.role })
-              }
-            >
-              <option value="">全部角色</option>
-              <option value="user">普通用户</option>
-              <option value="admin">管理员</option>
-            </select>
+              disabled={updating}
+              options={[
+                { value: '', label: '全部角色' },
+                { value: 'user', label: '普通用户' },
+                { value: 'admin', label: '管理员' },
+              ]}
+              onChange={(role) => setFilters({ ...filters, role: role as typeof filters.role })}
+            />
           </div>
           <div>
             <label htmlFor="admin-status">账号状态</label>
-            <select
+            <Select
               id="admin-status"
               value={filters.status}
-              onChange={(event) =>
-                setFilters({ ...filters, status: event.target.value as typeof filters.status })
+              disabled={updating}
+              options={[
+                { value: '', label: '全部状态' },
+                { value: 'active', label: '已启用' },
+                { value: 'disabled', label: '已禁用' },
+              ]}
+              onChange={(status) =>
+                setFilters({ ...filters, status: status as typeof filters.status })
               }
-            >
-              <option value="">全部状态</option>
-              <option value="active">已启用</option>
-              <option value="disabled">已禁用</option>
-            </select>
+            />
           </div>
           <div>
             <label htmlFor="admin-page-size">每页条数</label>
-            <select
+            <Select
               id="admin-page-size"
-              value={filters.page_size}
-              onChange={(event) =>
-                setFilters({ ...filters, page_size: Number(event.target.value) })
-              }
-            >
-              {[10, 20, 50, 100].map((size) => (
-                <option key={size} value={size}>
-                  {size} 条
-                </option>
-              ))}
-            </select>
+              value={String(filters.page_size)}
+              disabled={updating}
+              options={[10, 20, 50, 100].map((size) => ({
+                value: String(size),
+                label: `${size} 条`,
+              }))}
+              onChange={(next) => setFilters({ ...filters, page_size: Number(next) })}
+            />
           </div>
           <div className="admin-filter-actions">
             <button className="btn btn-primary" type="submit">

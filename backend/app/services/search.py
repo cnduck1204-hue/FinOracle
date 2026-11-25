@@ -73,6 +73,16 @@ async def open_page_image(
     return info.size, chunks
 
 
+# 时效性排序加权：默认过滤已废止条文；检索结果中优先返回现行有效条文
+_VALIDITY_WEIGHT = {
+    "effective": 1.15,
+    "not_yet_effective": 1.02,
+    "unknown": 1.0,
+    "amended": 0.9,
+    "repealed": 0.75,
+}
+
+
 async def search(
     payload: SearchRequest, session: AsyncSession, pipelines: PipelineRegistry
 ) -> SearchResponse:
@@ -83,7 +93,10 @@ async def search(
     ingest = pipeline.ingest.name
     async with session.begin():
         version_ids = await DocumentVersionRepository(session).published_ids(
-            payload.document_ids, ingest=ingest
+            payload.document_ids,
+            ingest=ingest,
+            include_repealed=payload.include_repealed,
+            validity_status=payload.validity_status,
         )
 
     async def page_units(pages):
@@ -117,10 +130,11 @@ async def search(
             if hit.chunk_id not in found:
                 continue
             chunk, version, document = found[hit.chunk_id]
+            weight = _VALIDITY_WEIGHT.get(version.validity_status, 1.0)
             results.append(
                 SearchResult(
                     chunk_id=chunk.id,
-                    score=hit.score,
+                    score=hit.score * weight,
                     dense_rank=hit.dense_rank,
                     dense_score=hit.dense_score,
                     keyword_rank=hit.keyword_rank,
@@ -128,7 +142,9 @@ async def search(
                     visual_rank=hit.visual_rank,
                     visual_score=hit.visual_score,
                     document=SearchDocument(
-                        id=document.id, title=document.title, issuer=document.issuer
+                        id=document.id,
+                        title=document.title,
+                        issuer=document.issuer,
                     ),
                     version=SearchVersion(
                         id=version.id,
@@ -152,6 +168,7 @@ async def search(
                     has_image=chunk.modality == PAGE_MODALITY,
                 )
             )
+        results.sort(key=lambda item: (-item.score, item.chunk_id))
     # 只记录耗时与数量，不记录用户的问题
     logger.info(
         "search_completed: versions=%d hits=%d retrieval_ms=%.0f total_ms=%.0f",

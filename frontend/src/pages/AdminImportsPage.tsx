@@ -10,6 +10,7 @@ import {
   Pagination,
 } from '../components/IngestionUi'
 import { Notice } from '../components/Notice'
+import { Select } from '../components/Select'
 import { errorMessage } from '../lib/api'
 import { formatDateTime } from '../lib/dates'
 import { JOB_KIND_LABELS, JOB_STATUS_LABELS, isJobActive } from '../lib/ingestion'
@@ -103,31 +104,32 @@ export function AdminImportsPage() {
         <fieldset className="admin-filters jobs-filters">
           <div>
             <label htmlFor="job-status">任务状态</label>
-            <select
+            <Select
               id="job-status"
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as JobStatus | '')}
-            >
-              <option value="">全部状态</option>
-              {(Object.keys(JOB_STATUS_LABELS) as JobStatus[]).map((value) => (
-                <option key={value} value={value}>
-                  {JOB_STATUS_LABELS[value]}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: '', label: '全部状态' },
+                ...(Object.keys(JOB_STATUS_LABELS) as JobStatus[]).map((value) => ({
+                  value,
+                  label: JOB_STATUS_LABELS[value],
+                })),
+              ]}
+              onChange={(next) => setStatusFilter(next as JobStatus | '')}
+            />
           </div>
           <div>
             <label htmlFor="job-kind">任务类型</label>
-            <select
+            <Select
               id="job-kind"
               value={kindFilter}
-              onChange={(event) => setKindFilter(event.target.value as JobKind | '')}
-            >
-              <option value="">全部类型</option>
-              <option value="parse">{JOB_KIND_LABELS.parse}</option>
-              <option value="index">{JOB_KIND_LABELS.index}</option>
-              <option value="pipeline">{JOB_KIND_LABELS.pipeline}</option>
-            </select>
+              options={[
+                { value: '', label: '全部类型' },
+                { value: 'parse', label: JOB_KIND_LABELS.parse },
+                { value: 'index', label: JOB_KIND_LABELS.index },
+                { value: 'pipeline', label: JOB_KIND_LABELS.pipeline },
+              ]}
+              onChange={(next) => setKindFilter(next as JobKind | '')}
+            />
           </div>
           <div className="admin-filter-actions">
             <button className="btn btn-primary" type="submit">

@@ -6,20 +6,18 @@ import { BackendStatus } from './BackendStatus'
 import { Brand } from './Brand'
 import { Notice } from './Notice'
 
-const searchLink = { path: '/search', label: '全文检索' }
-
-const upcomingLinks = [
-  { path: '/library', label: '制度库', number: '07' },
-  { path: '/favorites', label: '我的收藏', number: '08' },
+const primaryLinks = [
+  { path: '/search', label: '全文检索', number: '02' },
+  { path: '/library', label: '制度库', number: '03' },
+  { path: '/favorites', label: '我的收藏', number: '04' },
 ]
 
 const adminLinks = [
-  { path: '/admin/documents', label: '制度文档', number: '04' },
-  { path: '/admin/imports', label: '导入任务', number: '05' },
-  { path: '/admin/users', label: '用户管理', number: '06' },
+  { path: '/admin/imports', label: '导入任务', number: '06' },
+  { path: '/admin/users', label: '用户管理', number: '07' },
 ]
 
-const allLinks = [searchLink, ...upcomingLinks, ...adminLinks]
+const allLinks = [...primaryLinks, ...adminLinks]
 
 type WorkspaceLayout = {
   toolbar?: { title: ReactNode; actions: ReactNode }
@@ -111,22 +109,25 @@ export function AppLayout({
               新会话
               <Plus size={16} aria-hidden="true" />
             </button>
-            <NavLink
-              to={searchLink.path}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-              onClick={closeMenu}
-            >
-              <span className="nav-index" aria-hidden="true">
-                02
-              </span>
-              {searchLink.label}
-            </NavLink>
+            {primaryLinks.map(({ path, label, number }) => (
+              <NavLink
+                key={path}
+                to={path}
+                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                onClick={closeMenu}
+              >
+                <span className="nav-index" aria-hidden="true">
+                  {number}
+                </span>
+                {label}
+              </NavLink>
+            ))}
           </nav>
           <section className="sidebar-sessions" aria-label="会话">
             {user && sessions(closeMenu)}
             <NavLink to="/history" className="nav-item sidebar-sessions-all" onClick={closeMenu}>
               <span className="nav-index" aria-hidden="true">
-                03
+                05
               </span>
               查看全部
               <ChevronRight size={14} aria-hidden="true" />
@@ -152,27 +153,8 @@ export function AppLayout({
               </nav>
             </div>
           )}
-          <div className="nav-group">
-            <div className="nav-heading">规划模块</div>
-            <nav className="nav-list">
-              {upcomingLinks.map(({ path, label, number }) => (
-                <NavLink
-                  key={path}
-                  to={path}
-                  className={({ isActive }) => `nav-item nav-item-soon ${isActive ? 'active' : ''}`}
-                  onClick={closeMenu}
-                >
-                  <span className="nav-index" aria-hidden="true">
-                    {number}
-                  </span>
-                  {label}
-                  <small>准备中</small>
-                </NavLink>
-              ))}
-            </nav>
-          </div>
         </div>
-        {user && (
+        {user ? (
           <div className="sidebar-footer">
             <Link to="/account" className="account-link" onClick={closeMenu}>
               <span className="avatar" aria-hidden="true">
@@ -184,6 +166,13 @@ export function AppLayout({
               </div>
               <ChevronRight size={15} aria-hidden="true" />
             </Link>
+          </div>
+        ) : (
+          <div className="sidebar-footer">
+            <div className="sidebar-guest-meta" aria-hidden="true">
+              <strong>FINORACLE</strong>
+              <span>POLICY // RAG</span>
+            </div>
           </div>
         )}
       </aside>

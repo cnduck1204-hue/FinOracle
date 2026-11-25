@@ -1,4 +1,10 @@
-import type { ChatCitation, ChatOutcome, ChatStepState, ChatStreamUpdate } from './types'
+import type {
+  ChatCitation,
+  ChatConfidence,
+  ChatOutcome,
+  ChatStepState,
+  ChatStreamUpdate,
+} from './types'
 
 type ChatStreamMessage =
   | ChatStreamUpdate
@@ -35,6 +41,20 @@ function hasCitationTargets(value: unknown): value is ChatCitation[] {
 function isStepState(state: unknown): state is ChatStepState {
   return (
     state === 'running' || state === 'completed' || state === 'failed' || state === 'interrupted'
+  )
+}
+
+function isChatConfidence(value: unknown): value is ChatConfidence {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<ChatConfidence>
+  return (
+    typeof candidate.score === 'number' &&
+    Number.isInteger(candidate.score) &&
+    candidate.score >= 0 &&
+    candidate.score <= 100 &&
+    (candidate.level === 'high' || candidate.level === 'medium' || candidate.level === 'low') &&
+    Array.isArray(candidate.reasons) &&
+    candidate.reasons.every((item) => typeof item === 'string')
   )
 }
 
@@ -103,14 +123,24 @@ function parseMessage(event: string, data: string): ChatStreamMessage | undefine
       }
       break
     case 'done': {
-      const { status, answer, citations, turn_id } = payload
+      const { status, answer, citations, turn_id, confidence } = payload
       if (
         (status === 'answered' || status === 'partial' || status === 'insufficient_evidence') &&
         typeof answer === 'string' &&
         hasCitationTargets(citations) &&
-        (turn_id === undefined || (typeof turn_id === 'string' && turn_id))
+        (turn_id === undefined || (typeof turn_id === 'string' && turn_id)) &&
+        (confidence == null || isChatConfidence(confidence))
       ) {
-        return { type: 'done', result: { status, answer, citations, ...(turn_id && { turn_id }) } }
+        return {
+          type: 'done',
+          result: {
+            status,
+            answer,
+            citations,
+            ...(turn_id && { turn_id }),
+            ...(confidence != null && { confidence }),
+          },
+        }
       }
       break
     }

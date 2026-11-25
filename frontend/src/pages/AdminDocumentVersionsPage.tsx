@@ -22,6 +22,7 @@ import {
   formatBytes,
   isJobActive,
   isVersionBusy,
+  parseTagInput,
   versionName,
 } from '../lib/ingestion'
 import type { DocumentSummary } from '../lib/types'
@@ -39,6 +40,8 @@ function EditDocument({
   const { client } = useAuth()
   const [title, setTitle] = useState(document.title)
   const [issuer, setIssuer] = useState(document.issuer ?? '')
+  const [category, setCategory] = useState(document.category ?? '')
+  const [tagsText, setTagsText] = useState((document.tags ?? []).join(', '))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
 
@@ -50,6 +53,8 @@ function EditDocument({
       await client.updateDocument(document.id, {
         title: title.trim(),
         issuer: issuer.trim() || null,
+        category: category.trim() || null,
+        tags: parseTagInput(tagsText),
       })
       onSaved()
     } catch (caught) {
@@ -64,6 +69,20 @@ function EditDocument({
       <form className="auth-form" onSubmit={(event) => void save(event)}>
         <Field id="edit-title" label="制度标题" required value={title} onChange={setTitle} />
         <Field id="edit-issuer" label="发文机构" value={issuer} onChange={setIssuer} />
+        <Field
+          id="edit-category"
+          label="主题分类"
+          placeholder="例如：银行监管、证券法规、保险制度"
+          value={category}
+          onChange={setCategory}
+        />
+        <Field
+          id="edit-tags"
+          label="知识点标签（逗号分隔）"
+          placeholder="例如：资本充足率, 合规风控"
+          value={tagsText}
+          onChange={setTagsText}
+        />
         {Boolean(error) && (
           <Notice kind="error" error={error}>
             {errorMessage(error)}
@@ -118,9 +137,9 @@ export function AdminDocumentVersionsPage() {
 
   return (
     <>
-      <Link className="back-link" to="/admin/documents">
+      <Link className="back-link" to="/library?view=manage">
         <ArrowLeft size={14} aria-hidden="true" />
-        返回制度文档
+        返回制度库
       </Link>
       {loading && <LoadingState>正在加载版本…</LoadingState>}
       {Boolean(error) && !data && <LoadFailure error={error} onRetry={reload} />}
@@ -128,9 +147,18 @@ export function AdminDocumentVersionsPage() {
         <>
           <header className="page-heading">
             <div className="page-heading-text">
-              <span className="page-kicker">Document Versions</span>
+              <span className="page-kicker">{data.document.category || 'Document Versions'}</span>
               <h1>{data.document.title}</h1>
               <p>{data.document.issuer || '未填写发文机构'}</p>
+              {data.document.tags && data.document.tags.length > 0 && (
+                <div className="lib-admin-tags" style={{ marginTop: 8 }}>
+                  {data.document.tags.map((tag) => (
+                    <span key={tag} className="lib-tag-pill">
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="heading-actions">
               <button type="button" className="btn" onClick={() => setEditing(true)}>

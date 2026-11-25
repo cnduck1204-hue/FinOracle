@@ -14,10 +14,13 @@ from app.repositories.documents import (
 from app.schemas.chat import (
     ChatChunkCitation,
     ChatCitation,
+    ChatConfidence,
+    ChatConfidenceLevel,
     ChatParagraph,
     ChatReference,
     ChatResponse,
     ChatSource,
+    ChatStatus,
     ChatVersionCitation,
     ChatVersionMetadata,
     ChatVersionReference,
@@ -37,8 +40,77 @@ _VALIDITY_LABELS = {
 }
 
 
+def compute_confidence(
+    status: ChatStatus,
+    paragraphs: list[ChatParagraph],
+    citations: list[ChatCitation],
+) -> ChatConfidence | None:
+    """基于证据覆盖度、校验完整性和条文时效计算 0-100 可信度评分。"""
+    if status == "insufficient_evidence":
+        return ChatConfidence(
+            score=15,
+            level="low",
+            reasons=["当前已发布制度资料不足以支撑明确结论"],
+        )
+    if not citations:
+        if status == "partial":
+            return ChatConfidence(
+                score=35,
+                level="low",
+                reasons=["部分内容缺少可核对的制度条文依据"],
+            )
+        return None
+
+    reasons: list[str] = []
+    score = 60 if status == "answered" else 42
+    if status == "answered":
+        reasons.append("已通过后端条文、文号与时效一致性核验")
+    else:
+        reasons.append("部分主张缺少可核对依据或存在未覆盖版本")
+
+    # 证据覆盖度：带引用段落占比（最多 +20）
+    substantive = [p for p in paragraphs if p.text.strip()]
+    if substantive:
+        cited_ratio = sum(1 for p in substantive if p.citations) / len(substantive)
+        score += round(cited_ratio * 20)
+        if cited_ratio >= 0.8:
+            reasons.append("核心段落均有可溯源的制度引用")
+
+    # 依据充分度：多条依据交叉印证（最多 +10）
+    if len(citations) >= 2:
+        score += 10
+        reasons.append(f"引用 {len(citations)} 条已发布制度依据交叉印证")
+    else:
+        score += 6
+        reasons.append("引用 1 条已发布制度依据")
+
+    # 时效质量（+10 / -10 / -25）
+    statuses = {citation.version.validity_status for citation in citations}
+    if "repealed" in statuses:
+        score -= 25
+        reasons.append("所引资料包含已废止条文，请注意时效风险")
+    elif "amended" in statuses:
+        score -= 10
+        reasons.append("所引资料包含已修订条文，建议核对最新版本")
+    elif statuses == {"effective"}:
+        score += 10
+        reasons.append("所引条文均已核验为现行有效")
+    else:
+        reasons.append("部分引用条文时效待核验或尚未生效")
+
+    clamped = max(0, min(100, score))
+    level: ChatConfidenceLevel = (
+        "high" if clamped >= 80 else "medium" if clamped >= 55 else "low"
+    )
+    return ChatConfidence(score=clamped, level=level, reasons=reasons)
+
+
 def insufficient() -> ChatResponse:
-    return ChatResponse(status="insufficient_evidence", answer=_INSUFFICIENT)
+    return ChatResponse(
+        status="insufficient_evidence",
+        answer=_INSUFFICIENT,
+        confidence=compute_confidence("insufficient_evidence", [], []),
+    )
 
 
 def _source(

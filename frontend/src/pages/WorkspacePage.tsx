@@ -28,6 +28,7 @@ import {
 } from '../components/ChatSessions'
 import { Dialog } from '../components/Dialog'
 import { Notice } from '../components/Notice'
+import { SaveFavoriteDialog, type SaveFavoriteTarget } from '../components/SaveFavoriteDialog'
 import { ApiError, errorMessage } from '../lib/api'
 import type {
   ChatExecutionStep,
@@ -35,6 +36,7 @@ import type {
   ChatSessionUpdate,
   ChatToolStep,
   ChatTurn,
+  FavoriteSourceMatch,
 } from '../lib/types'
 
 const pendingTurnId = 'pending'
@@ -166,7 +168,11 @@ export function WorkspacePage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const prompt = location.state as { authMode?: 'login' | 'register'; from?: Path } | null
+  const prompt = location.state as {
+    authMode?: 'login' | 'register'
+    from?: Path
+    sessionId?: string
+  } | null
   const [guestQuestion, setGuestQuestion] = useState(
     () => readTabValue(guestDraftKey)?.slice(0, 2000) ?? '',
   )
@@ -181,6 +187,7 @@ export function WorkspacePage() {
         key={user?.id ?? 'guest'}
         guestQuestion={guestQuestion}
         setGuestQuestion={setGuestQuestion}
+        requestedSessionId={prompt?.sessionId}
       />
       {!user && prompt?.authMode && (
         <AuthDialog
@@ -196,9 +203,11 @@ export function WorkspacePage() {
 function Workspace({
   guestQuestion,
   setGuestQuestion,
+  requestedSessionId,
 }: {
   guestQuestion: string
   setGuestQuestion: (text: string) => void
+  requestedSessionId?: string
 }) {
   const { client, user } = useAuth()
   const navigate = useNavigate()
@@ -245,6 +254,9 @@ function Workspace({
   const [stage, setStage] = useState<'preparing' | 'generating' | null>(null)
   const [stopped, setStopped] = useState(false)
   const [askError, setAskError] = useState<unknown>(null)
+  const [savedTurns, setSavedTurns] = useState<Record<string, FavoriteSourceMatch>>({})
+  const [favSaveTarget, setFavSaveTarget] = useState<SaveFavoriteTarget | null>(null)
+  const [favBusyKey, setFavBusyKey] = useState<string | null>(null)
   const activeRequest = useRef<AbortController | null>(null)
   const unconfirmedTurn = useRef<UnconfirmedTurn | null>(null)
   const textarea = useRef<HTMLTextAreaElement>(null)
@@ -265,6 +277,71 @@ function Workspace({
   useEffect(() => {
     if (!inWorkspace) activeRequest.current?.abort()
   }, [inWorkspace])
+
+  useEffect(() => {
+    if (!user || !showChat || !requestedSessionId) return
+    if (requestedSessionId !== selectedSession.current) {
+      resetSession({
+        id: requestedSessionId,
+        title: '',
+        archived: false,
+        pinned: false,
+        updated_at: new Date().toISOString(),
+      })
+    }
+    navigate('/chat', { replace: true, state: null })
+  }, [navigate, requestedSessionId, showChat, user])
+
+  const completedTurnIdsKey = displayedTurns
+    .filter((turn) => turn.state !== 'running' && turn.result && turn.id !== pendingTurnId)
+    .map((turn) => turn.id)
+    .join(',')
+
+  useEffect(() => {
+    if (!user || !showChat || !completedTurnIdsKey) {
+      setSavedTurns({})
+      return
+    }
+    const controller = new AbortController()
+    const keys = completedTurnIdsKey.split(',').map((id) => `qa:${id}`)
+    client
+      .lookupFavorites(keys, controller.signal)
+      .then((res) => {
+        if (!controller.signal.aborted) setSavedTurns(res.items)
+      })
+      .catch(() => {
+        // Non-blocking lookup
+      })
+    return () => controller.abort()
+  }, [client, completedTurnIdsKey, showChat, user])
+
+  async function toggleTurnFavorite(turn: WorkspaceTurn) {
+    if (!sessionId || turn.id === pendingTurnId || favBusyKey) return
+    const key = `qa:${turn.id}`
+    const existing = savedTurns[key]
+    if (existing) {
+      setFavBusyKey(key)
+      try {
+        await client.deleteFavorite(existing.id)
+        setSavedTurns((previous) => {
+          const next = { ...previous }
+          delete next[key]
+          return next
+        })
+      } catch (error) {
+        setSessionActionError(error)
+      } finally {
+        setFavBusyKey(null)
+      }
+      return
+    }
+    setFavSaveTarget({
+      kind: 'qa',
+      sessionId,
+      turnId: turn.id,
+      defaultTitle: turn.question.slice(0, 255),
+    })
+  }
 
   useLayoutEffect(() => {
     rememberTabValue(draftsKey, Object.keys(drafts).length ? JSON.stringify(drafts) : null)
@@ -829,9 +906,24 @@ function Workspace({
           >
             {!hasConversation ? (
               <div className="workspace-thread workspace-welcome">
+                <div className="workspace-welcome-artwork" aria-hidden="true">
+                  <div className="workspace-welcome-grid" />
+                  <span className="artwork-cross artwork-cross-tl">+</span>
+                  <span className="artwork-cross artwork-cross-br">+</span>
+                  <div className="artwork-frame" />
+                  <div className="artwork-signal" />
+                  <span className="artwork-ruler">01 — POLICY WORKSPACE</span>
+                </div>
                 <header className="workspace-welcome-head">
-                  <span className="page-kicker">Policy Workspace</span>
-                  <h1>查制度，核出处</h1>
+                  <div className="workspace-welcome-kicker-row">
+                    <span className="page-kicker">Policy Workspace</span>
+                    <span className="workspace-welcome-tag" aria-hidden="true">
+                      SYS // VERIFIED CITATIONS
+                    </span>
+                  </div>
+                  <h1>
+                    查制度，<span className="highlight-word">核出处</span>
+                  </h1>
                   <p>从业务场景或条款出发，定位适用制度并核对原文。</p>
                 </header>
                 <div className="starter-list">
@@ -922,6 +1014,18 @@ function Workspace({
                               <ChatAnswer
                                 outcome={outcome}
                                 live={turn === latestTurn && asking && turn.state === 'running'}
+                                favorite={
+                                  sessionId &&
+                                  turn.state !== 'running' &&
+                                  turn.result &&
+                                  turn.id !== pendingTurnId
+                                    ? {
+                                        saved: Boolean(savedTurns[`qa:${turn.id}`]),
+                                        busy: favBusyKey === `qa:${turn.id}`,
+                                        onToggle: () => void toggleTurnFavorite(turn),
+                                      }
+                                    : undefined
+                                }
                               />
                             )}
                           </div>
@@ -993,6 +1097,21 @@ function Workspace({
             </div>
           </form>
         </Dialog>
+      )}
+      {favSaveTarget && (
+        <SaveFavoriteDialog
+          target={favSaveTarget}
+          onClose={() => setFavSaveTarget(null)}
+          onSaved={(saved) => {
+            if (saved.source_key) {
+              setSavedTurns((previous) => ({
+                ...previous,
+                [saved.source_key!]: { id: saved.id, folder_id: saved.folder_id },
+              }))
+            }
+            setFavSaveTarget(null)
+          }}
+        />
       )}
     </AppLayout>
   )

@@ -1,0 +1,141 @@
+/* ==========================================================================
+   MOTION & MICRO-INTERACTIONS — Neo-Swiss Editorial
+   Crisp, decisive cubic-bezier(.22, 1, .36, 1) with zero overshoot.
+   ========================================================================== */
+
+/* 1. Page & Panel Entrances: 8px subtle lift + fade */
+.page-content > header,
+.page-content > section,
+.page-content > form,
+.page-content > .account-grid,
+.page-content > .admin-list,
+.workspace-welcome,
+.chat-turn,
+.chat-source {
+  animation: workspace-enter 320ms var(--ease-out) both;
+}
+
+/* 2. Feedback & Error Entrances: 4px drop + fade */
+.notice,
+.field-error,
+.chat-turn-state-note,
+.review-warning {
+  animation: feedback-enter 200ms var(--ease-out) both;
+}
+
+/* 3. Navigation & Row Color Transitions */
+.nav-item,
+.auth-tab,
+.chat-citation {
+  transition:
+    background-color 180ms var(--ease-out),
+    border-color 180ms var(--ease-out),
+    color 180ms var(--ease-out);
+}
+
+.admin-table tbody tr,
+.import-row,
+.chat-directory-list .chat-session-row {
+  transition:
+    background-color 180ms var(--ease-out),
+    border-color 180ms var(--ease-out);
+}
+
+/* 4. Interactive Card Transitions */
+.starter-card,
+.search-result,
+.version-card {
+  transition:
+    transform 220ms var(--ease-out),
+    border-color 180ms var(--ease-out),
+    box-shadow 220ms var(--ease-out),
+    background-color 180ms var(--ease-out);
+}
+
+/* 5. Diagonal Arrow ↗ Micro-Interaction */
+.arrow-trigger svg,
+.starter-arrow,
+.chat-source-link svg,
+.search-citation a svg {
+  transition:
+    transform 220ms var(--ease-out),
+    color 180ms var(--ease-out);
+}
+
+/* 6. Segmented Progress Bar Transitions */
+.job-progress-bar span {
+  transition: background-color 350ms var(--ease-out);
+}
+
+/* 7. Fine-Pointer Hover Effects (Avoid Sticky Touch States) */
+@media (hover: hover) and (pointer: fine) {
+  .starter-card:hover:not(:disabled),
+  .search-result:hover,
+  .version-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--card-shadow);
+    border-color: var(--border-hover);
+  }
+
+  .starter-card:hover:not(:disabled) .starter-arrow,
+  .arrow-trigger:hover:not(:disabled) svg:last-child,
+  .chat-source-link:hover svg,
+  .search-citation a:hover svg {
+    transform: translate(2px, -2px);
+  }
+}
+
+/* 8. Keyframes */
+@keyframes workspace-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes feedback-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes chapter-arrive {
+  from {
+    opacity: 0;
+    transform: translate(14px, 16px) rotate(1deg);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0) rotate(-5deg);
+  }
+}
+
+@keyframes chapter-drift {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-5deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(-3deg);
+  }
+}
+
+/* 9. Reduced Motion Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
