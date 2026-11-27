@@ -1,0 +1,12 @@
+[
+  {"question":"证券公司停业整顿的期限最长多久？","expected_doc_id":"02cf178572b031c6_17ca2899dad59509","expected_prefix":"第七条"},
+  {"question":"处置证券公司风险时，证券经纪业务是否应正常进行？","expected_doc_id":"02cf178572b031c6_17ca2899dad59509","expected_prefix":"第五条"},
+  {"question":"谁组织协调监督证券公司风险处置工作？","expected_doc_id":"02cf178572b031c6_17ca2899dad59509","expected_prefix":"第二条"},
+  {"question":"证券公司挪用客户资产不能自行弥补，可以进行托管吗？","expected_doc_id":"02cf178572b031c6_17ca2899dad59509","expected_prefix":"第八条"},
+  {"question":"中介机构应根据哪些因素合理确定收费标准？","expected_doc_id":"be230cd22dd648e2_d37281781040f83b","expected_prefix":"第五条"},
+  {"question":"证券公司保荐业务收费能否以上市结果为条件？","expected_doc_id":"be230cd22dd648e2_d37281781040f83b","expected_prefix":"第六条"},
+  {"question":"会计师事务所审计业务费用能否以审计结果为条件？","expected_doc_id":"be230cd22dd648e2_d37281781040f83b","expected_prefix":"第七条"},
+  {"question":"为公开发行股票提供服务的律师收费由谁统一收取？","expected_doc_id":"be230cd22dd648e2_d37281781040f83b","expected_prefix":"第八条"},
+  {"question":"如何防范上市前突击清仓式分红？","expected_doc_id":"552bca5cb932abe2_7052599b73646c61","expected_prefix":"二、"},
+  {"question":"私募基金投资者如何通过合同发挥制约作用？","expected_doc_id":"f882e5fb7b903897_c6c3857c0ed668d5","expected_prefix":"（十五）"}
+]

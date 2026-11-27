@@ -1,0 +1,54 @@
+[
+  {
+    "title": "证券公司风险处置条例（2023年修订）",
+    "doc_id": "02cf178572b031c6_17ca2899dad59509",
+    "sha256_verified": true,
+    "pages": 12,
+    "chunks": 71,
+    "structure_blocks": 7,
+    "excluded_page_numbers": 0,
+    "issues": [],
+    "status": "needs_review",
+    "full_text_human_signoff": false
+  },
+  {
+    "title": "国务院关于加强监管防范风险推动资本市场高质量发展的若干意见",
+    "doc_id": "552bca5cb932abe2_7052599b73646c61",
+    "sha256_verified": true,
+    "pages": 9,
+    "chunks": 10,
+    "structure_blocks": 0,
+    "excluded_page_numbers": 0,
+    "issues": [
+      "source_declares_abridged"
+    ],
+    "status": "needs_review",
+    "full_text_human_signoff": false
+  },
+  {
+    "title": "国务院办公厅关于加强监管防范风险促进私募投资基金高质量发展的指导意见",
+    "doc_id": "f882e5fb7b903897_c6c3857c0ed668d5",
+    "sha256_verified": true,
+    "pages": 8,
+    "chunks": 25,
+    "structure_blocks": 4,
+    "excluded_page_numbers": 8,
+    "issues": [
+      "source_declares_abridged"
+    ],
+    "status": "needs_review",
+    "full_text_human_signoff": false
+  },
+  {
+    "title": "国务院关于规范中介机构为公司公开发行股票提供服务的规定",
+    "doc_id": "be230cd22dd648e2_d37281781040f83b",
+    "sha256_verified": true,
+    "pages": 4,
+    "chunks": 20,
+    "structure_blocks": 0,
+    "excluded_page_numbers": 4,
+    "issues": [],
+    "status": "needs_review",
+    "full_text_human_signoff": false
+  }
+]

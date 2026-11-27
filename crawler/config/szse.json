@@ -1,0 +1,14 @@
+{
+  "name": "szse-regulations-pilot",
+  "adapter": "szse",
+  "allowed_hosts": ["investor.szse.cn"],
+  "seeds": ["https://investor.szse.cn/lawrules/rules/regu/index.html"],
+  "link_pattern": "^https://investor\\.szse\\.cn/lawrules/rules/.*\\.pdf(?:\\?|$)",
+  "respect_robots": true,
+  "interval": 2,
+  "timeout": 25,
+  "max_bytes": 20971520,
+  "max_attempts": 3,
+  "max_depth": 1,
+  "max_tasks": 5
+}

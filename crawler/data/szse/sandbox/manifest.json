@@ -1,0 +1,14 @@
+{
+  "status": "completed",
+  "schema_version": "rag-sandbox-1.0",
+  "environment": "sandbox",
+  "records": 111,
+  "excluded_structure_or_preamble": 15,
+  "input_sha256": {
+    "documents.json": "47dd8d7be5afcb1f0295c84386054bf7d855163f0e7276ab6956f97f4da1d3f0",
+    "chunks.json": "edd040f5b1d11454fe92d531a6d50b95dd0a68b152f85e87ea05f3cb7d777111",
+    "report.json": "fc4a9e7181c181cae62f5593a3ed91bac99a0756ac8d3eedfe82c0900b42d1ab"
+  },
+  "records_sha256": "88e5ea72b7d6988e3cd6ed8865fb1ba9f9f969991d2e9c91f606926cdd79ca8e",
+  "released": 0
+}

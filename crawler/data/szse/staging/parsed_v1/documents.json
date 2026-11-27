@@ -1,0 +1,102 @@
+[
+  {
+    "doc_id": "02cf178572b031c6_17ca2899dad59509",
+    "title": "证券公司风险处置条例（2023年修订）",
+    "source_url": "https://investor.szse.cn/lawrules/rules/regu/index.html",
+    "download_url": "https://investor.szse.cn/lawrules/rules/regu/P020240802341036118987.pdf",
+    "file_path": "../../raw/17ca2899dad59509d25f753076f45d2a4754c6f60e4294aa3e03e512266519a6.pdf",
+    "file_type": "pdf",
+    "sha256": "17ca2899dad59509d25f753076f45d2a4754c6f60e4294aa3e03e512266519a6",
+    "validity_status": "unknown",
+    "quality_status": "needs_review",
+    "approved_for_integration": false,
+    "reviewed_parser_version": null,
+    "expected_articles": null,
+    "issues": [],
+    "parse_profile": {},
+    "revision_id": "17ca2899dad59509d25f753076f45d2a4754c6f60e4294aa3e03e512266519a6",
+    "collected_at": "2026-11-20T04:39:14.430025+00:00",
+    "source_completeness": "unknown",
+    "completeness_evidence": [],
+    "completeness_notice": "完整性尚未经独立核定",
+    "review_status": "needs_review"
+  },
+  {
+    "doc_id": "552bca5cb932abe2_7052599b73646c61",
+    "title": "国务院关于加强监管防范风险推动资本市场高质量发展的若干意见",
+    "source_url": "https://investor.szse.cn/lawrules/rules/regu/index.html",
+    "download_url": "https://investor.szse.cn/lawrules/rules/regu/P020240802341359234878.pdf",
+    "file_path": "../../raw/7052599b73646c61083d55898160b47783cc6c5c611d04cb56c61f4b80285c67.pdf",
+    "file_type": "pdf",
+    "sha256": "7052599b73646c61083d55898160b47783cc6c5c611d04cb56c61f4b80285c67",
+    "validity_status": "unknown",
+    "quality_status": "needs_review",
+    "approved_for_integration": false,
+    "reviewed_parser_version": null,
+    "expected_articles": null,
+    "issues": [],
+    "parse_profile": {},
+    "revision_id": "7052599b73646c61083d55898160b47783cc6c5c611d04cb56c61f4b80285c67",
+    "collected_at": "2026-11-20T04:39:16.440886+00:00",
+    "source_completeness": "abridged",
+    "completeness_evidence": [
+      {
+        "page": 9,
+        "text": "本文有删减",
+        "type": "source_declaration"
+      }
+    ],
+    "completeness_notice": "公开删减版，不能据此断言原文件未规定其他事项",
+    "review_status": "needs_review"
+  },
+  {
+    "doc_id": "f882e5fb7b903897_c6c3857c0ed668d5",
+    "title": "国务院办公厅关于加强监管防范风险促进私募投资基金高质量发展的指导意见",
+    "source_url": "https://investor.szse.cn/lawrules/rules/regu/index.html",
+    "download_url": "https://investor.szse.cn/lawrules/rules/regu/P020260908389033564006.pdf",
+    "file_path": "../../raw/c6c3857c0ed668d5873b1ee397769589c64bf140cd646291cf31d6392ae8f6d4.pdf",
+    "file_type": "pdf",
+    "sha256": "c6c3857c0ed668d5873b1ee397769589c64bf140cd646291cf31d6392ae8f6d4",
+    "validity_status": "unknown",
+    "quality_status": "needs_review",
+    "approved_for_integration": false,
+    "reviewed_parser_version": null,
+    "expected_articles": null,
+    "issues": [],
+    "parse_profile": {},
+    "revision_id": "c6c3857c0ed668d5873b1ee397769589c64bf140cd646291cf31d6392ae8f6d4",
+    "collected_at": "2026-11-20T04:39:18.442203+00:00",
+    "source_completeness": "abridged",
+    "completeness_evidence": [
+      {
+        "page": 8,
+        "text": "本文有删减",
+        "type": "source_declaration"
+      }
+    ],
+    "completeness_notice": "公开删减版，不能据此断言原文件未规定其他事项",
+    "review_status": "needs_review"
+  },
+  {
+    "doc_id": "be230cd22dd648e2_d37281781040f83b",
+    "title": "国务院关于规范中介机构为公司公开发行股票提供服务的规定",
+    "source_url": "https://investor.szse.cn/lawrules/rules/regu/index.html",
+    "download_url": "https://investor.szse.cn/lawrules/rules/regu/P020260908389212605406.pdf",
+    "file_path": "../../raw/d37281781040f83b380dfb3edc17a93206c05649aed494b8d4d8388a313454df.pdf",
+    "file_type": "pdf",
+    "sha256": "d37281781040f83b380dfb3edc17a93206c05649aed494b8d4d8388a313454df",
+    "validity_status": "unknown",
+    "quality_status": "needs_review",
+    "approved_for_integration": false,
+    "reviewed_parser_version": null,
+    "expected_articles": null,
+    "issues": [],
+    "parse_profile": {},
+    "revision_id": "d37281781040f83b380dfb3edc17a93206c05649aed494b8d4d8388a313454df",
+    "collected_at": "2026-11-20T04:39:20.503402+00:00",
+    "source_completeness": "unknown",
+    "completeness_evidence": [],
+    "completeness_notice": "完整性尚未经独立核定",
+    "review_status": "needs_review"
+  }
+]

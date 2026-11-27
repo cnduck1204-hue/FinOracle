@@ -1,0 +1,2031 @@
+<!DOCTYPE html>
+<html lang="zh-cmn-Hans">
+<head>
+    <meta charset="utf-8">
+<!--   <title>深交所主页</title>   -->
+<script>
+    var title = '<a href="./" class="CurrChnlCls">行政法规</a> ';
+    title = title.substring(title.indexOf('>')+1,title.indexOf('</'));
+    document.write('<title>深圳证券交易所-'+ title +'</title>')
+</script>
+<script>
+  if(location.protocol == 'https:'){
+    document.write('<link href="https://res.szse.cn/common/images/favicon.ico" rel="shortcut icon" type="image/x-icon" />');
+  }else{
+    document.write('<link href="http://res.static.szse.cn/common/images/favicon.ico" rel="shortcut icon" type="image/x-icon" />');
+  }
+</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=0" />
+<meta http-equiv="cache-control" content="max-age=0">
+<meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="expires" content="0">
+<meta http-equiv="expires" content="Web, 26 Feb 1997 08:21:57 GMT">
+<meta http-equiv="pragma" content="no-cache">
+<meta name="author" content="www.szse.cn">
+<meta name="description" content="深交所官网">
+<meta name="keywords" content="深交所,深交所官网,深圳证券交易所,交易所,交易所官网,深圳证券交易所官网">
+<meta name="renderer" content=webkit>
+<meta name="X-UA-Compatible" content="IE=edge">
+<meta name="google" value="notranslate"> 
+<meta name="format-detection" content="telephone=no">
+<meta name="format-detection" content="email=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="screen-orientation" content="portrait">
+<meta name="full-screen" content="yes">
+<meta name="browermode" content="application">
+<meta name="x5-orientation" content="portrait">
+<meta name="HandheldFriendly" content="true">
+<script type="text/javascript">
+	var u = navigator.userAgent;
+	var isAndroid = u.indexOf('Android') > -1 || u.indexOf('Adr') > -1;//android终端
+
+	function addElementMeta(name,  content) {
+		var head = document.getElementsByTagName('head')[0];
+		var meta = document.createElement('meta');
+
+		meta.setAttribute('name', name);
+		meta.setAttribute('content', content);
+		head.appendChild(meta);
+	}
+	if(isAndroid) {
+		addElementMeta('x5-fullscreen', 'true');
+		addElementMeta('x5-page-mode', 'app');
+	}
+</script> 
+    <script>
+  (function () {
+    var _versionDate = new Date().getTime();
+    if (location.protocol == 'https:') {
+      var _path = 'https://res.szse.cn';
+    } else {
+      var _path = 'http://res.static.szse.cn';
+    }
+    // _path = _path.replace(".static.", ".");
+    //var _path = 'http://res.szse.cn';
+    //document.write( " <script src='" + _path + "/common/js/first.js?random=" + _versionDate + "'> <\/script> ");
+    var _host = 'http://www.szse.cn';
+    if (location.protocol == 'https:') {
+      _host = 'https://www.szse.cn';
+    }
+
+
+    var backDomain = 'http://www.sse.org.cn'
+    var reg = /([a-zA-Z0-9][-a-zA-Z0-9]{0,62})((\.[a-zA-Z0-9][-a-zA-Z0-9]{0,62})+)\.?(:\d+)?/;
+    if (backDomain && window.location.host.match(reg)[2] === backDomain.match(reg)[2]) {
+      _host = 'http://www.sse.org.cn';
+      _path = 'http://res.static.sse.org.cn';
+      if (location.protocol == 'https:') {
+        _host = 'https://www.sse.org.cn';
+        _path = 'https://res.static.sse.org.cn';
+      }
+
+    }
+
+    _path = _path.replace(".static.", ".");
+
+    document.write(" <script src='" + _host + "/szsePath.js?random=" + _versionDate + "'> <\/script> "
+      + " <script src='" + _path + "/common/js/concatversion.js?random=" + _versionDate + "'> <\/script> ");
+  }());
+</script>
+
+<script>
+
+  function backDomainLinkSwitch(value, type) {
+    var _port = location.port ? (":" + location.port) : "";
+    var reg = /([a-zA-Z0-9][-a-zA-Z0-9]{0,62})((\.[a-zA-Z0-9][-a-zA-Z0-9]{0,62})+)\.?(:\d+)?/;
+    var urlRegx = /(.*)(http:|https:)(\/\/)(([a-zA-Z0-9][-a-zA-Z0-9]{0,62})((\.[a-zA-Z0-9][-a-zA-Z0-9]{0,62})+))\.?(:\d+)?(.*)/;
+
+    // html字符串替换
+    if (type == 'str') {
+      var strArr = value.split("=");
+      strArr = strArr.map(function (v) {
+        var host = reg.test(v) ? v.match(reg)[0] : null;
+        if (pathObj.szseHosts.indexOf(host) > -1) {
+          if (window.location.protocol == 'https:' && urlRegx.test(v)) {
+            v = v.replace(urlRegx, '$1https:$3$4' + _port + '$9');
+          };
+          if (pathObj.current_host === pathObj.back_host) {
+            v = v.replace(pathObj.main_host, pathObj.back_host);
+          }
+        }
+        return v
+      });
+      value = strArr.join("=");
+      return value;
+    }
+
+    // a标签地址替换
+    if (type === 'A') {
+      var eleA = document.querySelectorAll(value);
+      for (var i = 0; i < eleA.length; i++) {
+        var href = eleA[i].getAttribute("href");
+        var host = reg.test(href) ? href.match(reg)[0] : null;
+        if (href && pathObj.szseHosts.indexOf(host) > -1) {
+          if (window.location.protocol == 'https:') {
+            href = href.replace(urlRegx, '$1https:$3$4' + _port + '$9');
+          };
+          if (pathObj.current_host === pathObj.back_host) {
+            href = href.replace(pathObj.main_host, pathObj.back_host);
+          }
+          eleA[i].setAttribute('href', href);
+        }
+      }
+    }
+
+    // 单链接替换
+    if (type === "link") {
+      if (window.location.protocol == 'https:' && !!value) {
+        value = value.replace(urlRegx, '$1https:$3$4' + _port + '$9');
+      };
+      if (pathObj.current_host === pathObj.back_host) {
+        var host = reg.test(value) ? value.match(reg)[0] : null;
+        if (value && pathObj.szseHosts.indexOf(host) > -1) {
+          value = value.replace(pathObj.main_host, pathObj.back_host);
+        }
+      }
+      return value;
+    }
+
+    // 背景图地址更换
+    if (type === "background") {
+      var eleBg = document.querySelectorAll(value);
+      for (var i = 0; i < eleBg.length; i++) {
+        var href = eleBg[i].style.backgroundImage;
+        if (window.location.protocol == 'https:' && !!href) {
+          href = href.replace(urlRegx, '$1https:$3$4' + _port + '$9');
+        };
+        var host = reg.test(href) ? href.match(reg)[0] : null;
+        if (href && pathObj.szseHosts.indexOf(host) > -1) {
+          if (pathObj.current_host === pathObj.back_host) {
+            href = href.replace(pathObj.main_host, pathObj.back_host);
+          }
+          eleBg[i].style.backgroundImage = href;
+        }
+      }
+    }
+
+  }
+
+</script>
+
+<script>
+   if(document.cookie.indexOf('ft_language=1')>-1){
+    var style = document.createElement('style');
+    style.textContent='body{visibility:hidden;}';
+    document.head.appendChild(style);
+  }
+</script>
+<script>
+    addComCssFile()
+</script> 
+<script>
+    changeVertion('/modules/lawlules/css/common.css', 'css')
+    </script> 
+</head>
+<body>
+    <script>
+  navMenuAJAX('/application/publicindex/header/index.html', '/application/publicindex/header/index.html', 'header', 'www');
+</script>
+<div class="g-locationnav">
+    <div class="banner-wrap">
+      <img src="http://res.static.szse.cn/common/images/legalrules-banner.jpg" />
+    </div>
+    <div class="g-container">
+      <div class="g-banner-txt">
+            <h2 class="hidden-xs">行政法规</h2>
+            <p>
+              <img src="http://res.static.szse.cn/common/icon/er-banneradr.png" />位置：<a href="../../" class="CurrChnlCls">法律规则</a>/<a href="../" class="CurrChnlCls">法律法规</a>/<a href="./" class="CurrChnlCls">行政法规</a>
+            </p>
+          </div>
+    </div>
+</div>
+    <script>
+        var articleCount=0
+        
+                 articleCount=1
+            
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+            
+        
+    </script>
+    <div class="g-container-wrap">
+        <div class="g-container">
+            <div class="g-sidemenu">
+                
+
+<div class="menu-container">
+	<h2 class="title">法律规则</h2>
+	<div class="side-menu-container">
+		<ul class="side-menu-con">
+           <li class="level1 active" chnlcode="rules">
+
+			        <a class="dropup">
+					<div>法律法规
+					
+					  <b class="caret"></b>
+					</div>
+				</a>
+				
+				<ul>
+           <li class="level2 last" type="0" chnlcode="law_news">
+
+			            <a href="../../../lawrules/rules/law/index.html">
+					<div>法律
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level2 active last" chnlcode="adminregu_news">
+
+			            <a href="../../../lawrules/rules/regu/index.html">
+					<div>行政法规
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level2 last" type="0" chnlcode="judicial_news">
+
+			            <a href="../../../lawrules/rules/judicial/index.html">
+					<div>司法解释
+					
+					</div>
+				</a>
+				
+	  </li>
+				</ul>
+	  </li>
+            <li class="level1" type="0" chnlcode="csrcrules">
+
+			        <a> 
+					<div>证监会规章和规范性文件
+					
+					  <b class="caret"></b>
+					</div>
+				</a>
+				
+				<ul>
+           <li class="level2 last" type="0" chnlcode="csrccommand">
+
+			            <a href="../../../lawrules/csrcrules/command/index.html">
+					<div>证监会令
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level2 last" type="0" chnlcode="csrcnotice">
+
+			            <a href="../../../lawrules/csrcrules/notice/index.html">
+					<div>证监会公告
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level2 last" type="0" chnlcode="csrcrulesGuide_news">
+
+			            <a href="../../../lawrules/csrcrules/guide/index.html">
+					<div>监管规则适用指引
+					
+					</div>
+				</a>
+				
+	  </li>
+				</ul>
+	  </li>
+            <li class="level1" type="0" chnlcode="szseBussrules">
+
+			        <a> 
+					<div>本所业务规则
+					
+					  <b class="caret"></b>
+					</div>
+				</a>
+				
+				<ul>
+           <li class="level2 last" type="0" chnlcode="szserulesNew">
+
+			            <a href="../../../lawrules/rule/new/index.html">
+					<div>最新规则
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level2 last" type="0" chnlcode="szserulesAlltype">
+
+			            <a href="../../../lawrules/rule/all/index.html">
+					<div>综合类
+					
+					</div>
+				</a>
+				
+	  </li>
+            <li class="level2" type="0" chnlcode="szserulesStock_news">
+
+			        <a> 
+					<div>股票类
+					
+					  <b class="caret"></b>
+					</div>
+				</a>
+				
+				<ul>
+           <li class="level3 last" type="0" chnlcode="szserulesStockListAudit_news">
+
+			            <a href="../../../lawrules/rule/stock/audit/index.html">
+					<div>发行上市审核
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level3 last" type="0" chnlcode="szserulesStockIssue_news">
+
+			            <a href="../../../lawrules/rule/stock/issue/index.html">
+					<div>发行承销
+					
+					</div>
+				</a>
+				
+	  </li>
+            <li class="level3" type="0" chnlcode="szserulesStockSupervision">
+
+			        <a> 
+					<div>持续监管
+					
+					  <b class="caret"></b>
+					</div>
+				</a>
+				
+				<ul>
+           <li class="level4 last" type="0" chnlcode="szserulesStockCurrency_news">
+
+			            <a href="../../../lawrules/rule/stock/supervision/currency/index.html">
+					<div>通用
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level4 last" type="0" chnlcode="szserulesStockMainB_news">
+
+			            <a href="../../../lawrules/rule/stock/supervision/mb/index.html">
+					<div>主板专用
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level4 last" type="0" chnlcode="szserulesStockChinext_news">
+
+			            <a href="../../../lawrules/rule/stock/supervision/chinext/index.html">
+					<div>创业板专用
+					
+					</div>
+				</a>
+				
+	  </li>
+				</ul>
+	  </li>
+           <li class="level3 last" type="0" chnlcode="szserulesStockTrade_news">
+
+			            <a href="../../../lawrules/rule/stock/trade/index.html">
+					<div>交易
+					
+					</div>
+				</a>
+				
+	  </li>
+				</ul>
+	  </li>
+            <li class="level2" type="0" chnlcode="szserulesBond_news">
+
+			        <a> 
+					<div>固收类
+					
+					  <b class="caret"></b>
+					</div>
+				</a>
+				
+				<ul>
+            <li class="level3" type="0" chnlcode="szserulesbondBonds_news">
+
+			        <a> 
+					<div>债券
+					
+					  <b class="caret"></b>
+					</div>
+				</a>
+				
+				<ul>
+           <li class="level4 last" type="0" chnlcode="szserulebondListing_news">
+
+			            <a href="../../../lawrules/rule/bond/bonds/list/index.html">
+					<div>发行上市（挂牌）
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level4 last" type="0" chnlcode="szserulesbondSupervision_news">
+
+			            <a href="../../../lawrules/rule/bond/bonds/supervision/index.html">
+					<div>持续监管
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level4 last" type="0" chnlcode="szserulesbondTrade_news">
+
+			            <a href="../../../lawrules/rule/bond/bonds/trade/index.html">
+					<div>交易
+					
+					</div>
+				</a>
+				
+	  </li>
+				</ul>
+	  </li>
+           <li class="level3 last" type="0" chnlcode="szserulesbondAbs_news">
+
+			            <a href="../../../lawrules/rule/bond/abs/index.html">
+					<div>资产支持证券
+					
+					</div>
+				</a>
+				
+	  </li>
+				</ul>
+	  </li>
+            <li class="level2" type="0" chnlcode="szserulesFund_news">
+
+			        <a> 
+					<div>基金类
+					
+					  <b class="caret"></b>
+					</div>
+				</a>
+				
+				<ul>
+           <li class="level3 last" type="0" chnlcode="szserulesFundList_news">
+
+			            <a href="../../../lawrules/rule/fund/list/index.html">
+					<div>上市
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level3 last" type="0" chnlcode="szserulesFundTrade_news">
+
+			            <a href="../../../lawrules/rule/fund/trade/index.html">
+					<div>交易
+					
+					</div>
+				</a>
+				
+	  </li>
+				</ul>
+	  </li>
+           <li class="level2 last" type="0" chnlcode="szserulesReits_news">
+
+			            <a href="../../../lawrules/rule/reits/index.html">
+					<div>REITs类
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level2 last" type="0" chnlcode="szserulesDerivative_news">
+
+			            <a href="../../../lawrules/rule/derivative/index.html">
+					<div>衍生品类
+					
+					</div>
+				</a>
+				
+	  </li>
+            <li class="level2" type="0" chnlcode="szserulesTrade_news">
+
+			        <a> 
+					<div>交易类
+					
+					  <b class="caret"></b>
+					</div>
+				</a>
+				
+				<ul>
+           <li class="level3 last" type="0" chnlcode="szserulestradeCurrency_news">
+
+			            <a href="../../../lawrules/rule/trade/current/index.html">
+					<div>通用
+					
+					</div>
+				</a>
+				
+	  </li>
+            <li class="level3" type="0" chnlcode="szserulestradeBusiness_news">
+
+			        <a> 
+					<div>特定业务
+					
+					  <b class="caret"></b>
+					</div>
+				</a>
+				
+				<ul>
+           <li class="level4 last" type="0" chnlcode="szserulestradeMargin_news">
+
+			            <a href="../../../lawrules/rule/trade/business/margin/index.html">
+					<div>融资融券
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level4 last" type="0" chnlcode="szserulestradeRefinancing_news">
+
+			            <a href="../../../lawrules/rule/trade/business/refinancing/index.html">
+					<div>转融通
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level4 last" type="0" chnlcode="szserulestradePledge_news">
+
+			            <a href="../../../lawrules/rule/trade/business/pledge/index.html">
+					<div>股票质押式回购
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level4 last" type="0" chnlcode="szserulestradePrice_news">
+
+			            <a href="../../../lawrules/rule/trade/business/price/index.html">
+					<div>质押式报价回购
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level4 last" type="0" chnlcode="szserulestradePromise_news">
+
+			            <a href="../../../lawrules/rule/trade/business/promise/index.html">
+					<div>约定购回
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level4 last" type="0" chnlcode="szserulestradeTransfer_news">
+
+			            <a href="../../../lawrules/rule/trade/business/transfer/index.html">
+					<div>协议转让
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level4 last" type="0" chnlcode="szserulestradeOther_news">
+
+			            <a href="../../../lawrules/rule/trade/business/oth/index.html">
+					<div>其他
+					
+					</div>
+				</a>
+				
+	  </li>
+				</ul>
+	  </li>
+				</ul>
+	  </li>
+           <li class="level2 last" type="0" chnlcode="szserulesMember_news">
+
+			            <a href="../../../lawrules/rule/memberty/index.html">
+					<div>会员管理类
+					
+					</div>
+				</a>
+				
+	  </li>
+            <li class="level2" type="0" chnlcode="szserulesInnovation_news">
+
+			        <a> 
+					<div>跨境创新类
+					
+					  <b class="caret"></b>
+					</div>
+				</a>
+				
+				<ul>
+           <li class="level3 last" type="0" chnlcode="szserulesinnoSzhk_news">
+
+			            <a href="../../../lawrules/rule/inno/szhk/index.html">
+					<div>深港通
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level3 last" type="0" chnlcode="szserulesPilot_news">
+
+			            <a href="../../../lawrules/rule/inno/pilot/index.html">
+					<div>试点创新企业
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level3 last" type="0" chnlcode="szserulesCirculate_news">
+
+			            <a href="../../../lawrules/rule/inno/hc/index.html">
+					<div>H股全流通
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level3 last" type="0" chnlcode="szserulesinnoGdr_news">
+
+			            <a href="../../../lawrules/rule/inno/gdr/index.html">
+					<div>互联互通存托凭证
+					
+					</div>
+				</a>
+				
+	  </li>
+				</ul>
+	  </li>
+           <li class="level2 last" type="0" chnlcode="szserulesPunishmentRelief_news">
+
+			            <a href="../../../lawrules/rule/pr/index.html">
+					<div>纪律处分与内部救济类
+					
+					</div>
+				</a>
+				
+	  </li>
+            <li class="level2" type="0" chnlcode="szserulesAllRules">
+
+			        <a> 
+					<div>全部规则
+					
+					  <b class="caret"></b>
+					</div>
+				</a>
+				
+				<ul>
+           <li class="level3 last" type="0" chnlcode="szserulesAllRulesBuss">
+
+			            <a href="../../../lawrules/rule/allrules/bussiness/index.html">
+					<div>全部业务规则
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level3 last" type="0" chnlcode="szserulesAllRulesDownload">
+
+			            <a href="../../../lawrules/rule/allrules/rulejoin/index.html">
+					<div>规则汇编下载
+					
+					</div>
+				</a>
+				
+	  </li>
+				</ul>
+	  </li>
+            <li class="level2" type="0" chnlcode="szserulesRepeal">
+
+			        <a> 
+					<div>已废止规则
+					
+					  <b class="caret"></b>
+					</div>
+				</a>
+				
+				<ul>
+           <li class="level3 last" type="0" chnlcode="szserules_gzfzgg">
+
+			            <a href="../../../lawrules/rule/repeal/announcement/index.html">
+					<div>规则废止公告
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level3 last" type="0" chnlcode="szserules_yfzgzwb">
+
+			            <a href="../../../lawrules/rule/repeal/rules/index.html">
+					<div>已废止规则文本
+					
+					</div>
+				</a>
+				
+	  </li>
+				</ul>
+	  </li>
+				</ul>
+	  </li>
+            <li class="level1" type="0" chnlcode="memorandumServicedirect">
+
+			        <a> 
+					<div>本所业务指南
+					
+					  <b class="caret"></b>
+					</div>
+				</a>
+				
+				<ul>
+           <li class="level2 last" type="0" chnlcode="shareType_news">
+
+			            <a href="../../../lawrules/service/share/index.html">
+					<div>股票类
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level2 last" type="0" chnlcode="bondType_news">
+
+			            <a href="../../../lawrules/service/bond/index.html">
+					<div>固收类
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level2 last" type="0" chnlcode="fundType_news">
+
+			            <a href="../../../lawrules/service/fund/index.html">
+					<div>基金类
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level2 last" type="0" chnlcode="szseserviceReits_news">
+
+			            <a href="../../../lawrules/service/reits/index.html">
+					<div>REITs类
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level2 last" type="0" chnlcode="szseserviceDerivative_news">
+
+			            <a href="../../../lawrules/service/derivative/index.html">
+					<div>衍生品类
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level2 last" type="0" chnlcode="memberTradeType_news">
+
+			            <a href="../../../lawrules/service/member/index.html">
+					<div>会员与交易类
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level2 last" type="0" chnlcode="crossBorderInnovation_news">
+
+			            <a href="../../../lawrules/service/cross/index.html">
+					<div>跨境创新类
+					
+					</div>
+				</a>
+				
+	  </li>
+           <li class="level2 last" type="0" chnlcode="otherType_news">
+
+			            <a href="../../../lawrules/service/oth/index.html">
+					<div>其他类
+					
+					</div>
+				</a>
+				
+	  </li>
+				</ul>
+	  </li>
+           <li class="level1 last" type="0" chnlcode="publicadvice">
+
+			            <a href="../../../lawrules/publicadvice/index.html">
+					<div>公开征求意见
+					
+					</div>
+				</a>
+				
+	  </li>
+		</ul>
+	</div>
+</div>
+
+
+            </div>
+            <div class="g-content">
+                <div class="lawrules-search-wrap g-conbox">
+    <div class="lawrules-search">
+        <form class="searchquery" action="" target="frameFile" id="lawSearchForm">
+            <div class="searchquery-row1 clearfix">
+                <div class="searchtypewarp">
+                    <label class="radio-inline">
+                        <input type="radio" name="searchtype" value="0" checked="" />精确
+                    </label>
+                    <label class="radio-inline">
+                        <input type="radio" name="searchtype" value="1" />模糊
+                    </label>
+                </div>
+                <div class="searchinputwarp">
+                    <div class="search-wrap sh-searchhint-container">
+                        <div class="search-select-wrap">
+                            <span class="search-select"></span>
+                        </div>
+                        <div class="search-input-wrap">
+                            <input type="search" class="form-control search-input need-repaired-placeholder" maxlength="100" autocomplete="off" placeholder="请输入关键字" name="keyword" value="" />
+                             <input type="text" style="display: none;" />
+                            <iframe name="frameFile" style="display: none;"></iframe>
+                        </div>
+                        <span class="clear-keyword" style="display: none;">×</span>
+                        <button type="button" class="search-btn" id="gotoSearchBtn">搜索</button>
+                       
+                    </div>
+                </div>
+            </div>
+            <div class="searchconditionwarp clearfix">
+                <div class="searchcondilabel">搜索范围：</div>
+                <div class="searchcondilist">
+                    <label class="checkbox-inline">
+                       <input type="checkbox" checked="" class="checkAll" />全部
+                    </label>
+                    
+                        <label class="checkbox-inline">
+                            <input type="checkbox" checked="" name="searchrange" class="channel-check-item" value="rules" />
+                            法律法规
+                        </label>
+                    
+                        <label class="checkbox-inline">
+                            <input type="checkbox" checked="" name="searchrange" class="channel-check-item" value="csrcrules" />
+                            证监会规章和规范性文件
+                        </label>
+                    
+                        <label class="checkbox-inline">
+                            <input type="checkbox" checked="" name="searchrange" class="channel-check-item" value="szseBussrules" />
+                            本所业务规则
+                        </label>
+                    
+                        <label class="checkbox-inline">
+                            <input type="checkbox" checked="" name="searchrange" class="channel-check-item" value="memorandumServicedirect" />
+                            本所业务指南
+                        </label>
+                    
+                        <label class="checkbox-inline">
+                            <input type="checkbox" checked="" name="searchrange" class="channel-check-item" value="publicadvice" />
+                            公开征求意见
+                        </label>
+                    
+                        <label class="checkbox-inline">
+                            <input type="checkbox" checked="" name="searchrange" class="channel-check-item" value="lawruleSearch" />
+                            法律规则搜索
+                        </label>
+                    
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+                <div class="lawrulessearchresult g-conbox">
+                    <div class="g-contitle">
+                        <!-- <a class="more" href="" target="_blank">更多 &gt;</a> -->
+                          <h2 class="title">  行政法规</h2>
+                    </div>
+                               
+                    <div class="report-query  mainquery-container">                
+                      <div class="form-group form-condition">
+                        <label class="sr-only" for="code">输入关键字</label>
+                          <input maxlength="100" type="text" class="form-control report-query-item input-typeahead" id="article-text" placeholder="输入关键字" value="" />
+                      </div>
+                      <div class="form-group form-condition">
+                        <label class="sr-only" for="aticle-datepicker">发布日期</label>
+                          <input type="text" class="form-control report-query-item" id="aticle-datepicker" value="" placeholder="发布日期" />
+                      </div>
+                      <div class="form-group form-condition">
+                        <button type="button" class= "confirm-query btn-query-primary">查询</button>  
+                      </div>              
+                    </div>  
+                    <div class="article-list">
+                        <div class="g-content-list">
+                           <ul class="newslist date-right">
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020260908389033564006.pdf';
+    //var curTitle = '国务院办公厅关于加强监管防范风险促进私募投资基金高质量发展的指导意见';
+//var subTitle = '';
+ var curTitle ='国务院办公厅关于加强监管防范风险促进私募投资基金高质量发展的指导意见';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '1'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2026-06-03
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020260908389212605406.pdf';
+    //var curTitle = '国务院关于规范中介机构为公司公开发行股票提供服务的规定';
+//var subTitle = '';
+ var curTitle ='国务院关于规范中介机构为公司公开发行股票提供服务的规定';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '2'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2025-01-10
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020240802341359234878.pdf';
+    //var curTitle = '国务院关于加强监管防范风险推动资本市场高质量发展的若干意见';
+//var subTitle = '';
+ var curTitle ='国务院关于加强监管防范风险推动资本市场高质量发展的若干意见';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '3'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2024-04-12
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020240802341036118987.pdf';
+    //var curTitle = '证券公司风险处置条例（2023年修订）';
+//var subTitle = '';
+ var curTitle ='证券公司风险处置条例（2023年修订）';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '4'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2023-08-21
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020250519330190516189.pdf';
+    //var curTitle = '证券公司风险处置条例（2023年修订）';
+//var subTitle = '';
+ var curTitle ='证券公司风险处置条例（2023年修订）';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '5'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2023-07-20
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020240802340297652280.pdf';
+    //var curTitle = '私募投资基金监督管理条例';
+//var subTitle = '';
+ var curTitle ='私募投资基金监督管理条例';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '6'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2023-07-09
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020240802341712732286.pdf';
+    //var curTitle = '国务院办公厅关于上市公司独立董事制度改革的意见';
+//var subTitle = '';
+ var curTitle ='国务院办公厅关于上市公司独立董事制度改革的意见';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '7'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2023-04-14
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020230905494655999970.pdf';
+    //var curTitle = '国务院办公厅关于进一步盘活存量资产扩大有效投资的意见';
+//var subTitle = '';
+ var curTitle ='国务院办公厅关于进一步盘活存量资产扩大有效投资的意见';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '8'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2022-05-19
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020220927408828602625.pdf';
+    //var curTitle = '证券期货行政执法当事人承诺制度实施办法';
+//var subTitle = '';
+ var curTitle ='证券期货行政执法当事人承诺制度实施办法';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '9'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2021-10-26
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020220927408546768041.pdf';
+    //var curTitle = '关键信息基础设施安全保护条例';
+//var subTitle = '';
+ var curTitle ='关键信息基础设施安全保护条例';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '10'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2021-07-30
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020220927408259936417.pdf';
+    //var curTitle = '中华人民共和国市场主体登记管理条例';
+//var subTitle = '';
+ var curTitle ='中华人民共和国市场主体登记管理条例';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '11'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2021-07-27
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020210615322615725011.pdf';
+    //var curTitle = '企业名称登记管理规定（2021年修订）';
+//var subTitle = '';
+ var curTitle ='企业名称登记管理规定（2021年修订）';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '12'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2020-12-28
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020201118382885200715.pdf';
+    //var curTitle = '国务院关于进一步提高上市公司质量的意见';
+//var subTitle = '';
+ var curTitle ='国务院关于进一步提高上市公司质量的意见';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '13'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2020-10-09
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020200417365754540069.pdf';
+    //var curTitle = '国务院办公厅关于贯彻实施修订后的证券法有关工作的通知';
+//var subTitle = '';
+ var curTitle ='国务院办公厅关于贯彻实施修订后的证券法有关工作的通知';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '14'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2020-02-29
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020200417367100001606.pdf';
+    //var curTitle = '中共中央、国务院关于营造更好发展环境支持民营企业改革发展的意见';
+//var subTitle = '';
+ var curTitle ='中共中央、国务院关于营造更好发展环境支持民营企业改革发展的意见';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '15'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2019-12-04
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020200417368541518878.pdf';
+    //var curTitle = '优化营商环境条例';
+//var subTitle = '';
+ var curTitle ='优化营商环境条例';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '16'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2019-10-22
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020200417370054455116.pdf';
+    //var curTitle = '国务院关于调整适用在境外上市公司召开股东大会通知期限等事项规定的批复';
+//var subTitle = '';
+ var curTitle ='国务院关于调整适用在境外上市公司召开股东大会通知期限等事项规定的批复';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '17'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2019-10-17
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020200417372376470044.pdf';
+    //var curTitle = '国务院关于加强和规范事中事后监管的指导意见';
+//var subTitle = '';
+ var curTitle ='国务院关于加强和规范事中事后监管的指导意见';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '18'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2019-09-06
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020190919522464845610.pdf';
+    //var curTitle = '国务院办公厅关于加快推进社会信用体系建设构建以信用为基础的新型监管机制的指导意见';
+//var subTitle = '';
+ var curTitle ='国务院办公厅关于加快推进社会信用体系建设构建以信用为基础的新型监管机制的指导意见';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '19'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2019-07-09
+                                            </span>
+                                        </div>
+                                    </li>
+                                
+                                    <li>  
+                                          <div class="title">
+                                          
+                                           <script>
+  
+    var curHref = './P020190919520815382093.pdf';
+    //var curTitle = '企业国有资产监督管理暂行条例（2019年修正）';
+//var subTitle = '';
+ var curTitle ='企业国有资产监督管理暂行条例（2019年修正）';
+    var curCmsDocType = '40'
+    var curTarget = '';
+    var pointIndex = curHref.lastIndexOf('.');
+    var docType = curHref.substring(pointIndex+1).toLocaleLowerCase();
+    if (!(docType == 'html' || docType == 'pdf' || docType == 'xml' || docType == 'txt' || docType == 'jpg' || docType == 'png' || docType == 'jpeg' || docType == 'bmp') && curCmsDocType != 30) {
+        curTarget = '_self';
+    } else {
+        curTarget = '_blank';
+    }
+    var channelName = 'adminregu_news';
+    var doingFlagHtml='';
+    //进行中标识
+    if(channelName == 'questionnaire_news' && subTitle =='进行中'){
+    	doingFlagHtml = '<span class="surveyIsDoing">进行中</span>';
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>');  
+    } else if((channelName  == 'introduce_hidden' || channelName  == 'serveGuide_hidden' || channelName  == 'dataInterface_hidden' || channelName  == 'technicalGuide_hidden')&& '20'==1){
+    //技术服务页面，判断是否第一条是置顶
+       doingFlagHtml = '<span class="surveyIsDoing">置顶</span>';
+       document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">'+ doingFlagHtml + curTitle + '</a>'); 
+    }else{
+    	document.write('<a class="ellipsis art-list-link" href="' + curHref + '" title="' + curTitle + '" target="' + curTarget + '">' + curTitle + '</a>');  
+    }
+
+    
+    
+</script>
+
+                                            <span class="time">
+                                             2019-03-02
+                                            </span>
+                                        </div>
+                                    </li>
+                                         
+                            </ul>
+                             <script>
+                                if(articleCount == 0){
+                                   var nodataHtml = ' <div class="report-nodata">'
+                                                 +       '<span class="nodata-text">没有找到符合条件的数据！</span>'
+                                                 +     '</div>';
+                                   document.write(nodataHtml);
+                                }
+                             </script>
+                        </div>
+                        <div class="article-list-paginator">
+                            <div class="paginator">
+                                <ul class="paginator-ul pagination paginator-article-cms"></ul>
+                                 <ul class="paginator-ul pagination paginator-article-list"></ul>                                                          
+                            </div>
+                            <script>
+                               var pageHtml = '';
+                               if(articleCount == 0){
+                                  pageHtml = ' <div class="current-page" style="display:none">'
+                                            +       '当前第<span class="num-cur"></span>页&nbsp;&nbsp;共<span class="num-all"></span>页'
+                                            +     '</div>';
+                                  document.write(pageHtml);
+                               }else{
+                                  pageHtml = ' <div class="current-page">'
+                                          +       '当前第<span class="num-cur"></span>页&nbsp;&nbsp;共<span class="num-all"></span>页'
+                                          +     '</div>';
+                                  document.write(pageHtml);
+                               }
+                            </script>
+                            
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+  changeVertion('/common/js/toggleBig5.js', 'js');
+  navMenuAJAX('/application/publicindex/footer/index.html','/application/publicindex/footer/index.html', 'footer','www');
+  addComJsFile();
+</script>
+    <script id="article-template" type="text/html">
+    <ul class="newslist date-right">
+                <% _.each(data,function(item){ %>           
+                  <li>         
+                    <div class="title">
+                      <%if(!(item.doctype== 'html' || item.doctype== 'pdf' || item.doctype== 'xml' || item.doctype== 'txt' || item.doctype== 'jpg' || item.doctype== 'png' || item.doctype== 'jpeg' || item.doctype== 'bmp')&& curCmsDocType != 30 && item.doctype !== 'link'){%>
+                                    <a class="ellipsis art-list-link" href="<%=item.docpuburl%>" title="<%=replaceTitle(item.doctitle)%>" target="_self">
+                      <%}else{%>
+                      <a class="ellipsis art-list-link" href="<%=item.docpuburl%>" title="<%=replaceTitle(item.doctitle)%>" target="_blank">
+                      <%}%>
+        <!-- <a class="ellipsis art-list-link" href="<%=item.docpuburl%>" title="<%=replaceTitle(item.doctitle)%>" target="_blank"> -->
+                          <%=item.doctitle%>
+                        </a>
+                        <span class="time"><%- formateDate(item.docpubtime) %></span>
+                    </div>
+                  </li>
+                <% }) %>                                      
+    </ul>
+        <% if (data.length<=0) {%> 
+              <div class="report-nodata">
+                    <span class="nodata-text"><%= enlangflag ? 'No data was found that fit the condition!' : '没有找到符合条件的数据！' %></span>
+              </div>
+        <% }%>   
+</script>
+<script>
+    changeVertion('/common/js/articleList.js','js');        
+</script>
+
+<script type="text/javascript">
+      
+    var cmsParam = {
+        pageCount:5,
+        pageIndex:0,
+        currentMenuId:'adminregu_news'
+    }
+    if(IEVersion() <= 10 && IEVersion() > 0){
+             window.onload = function(){
+                createPageHTML(5, 0, "index", "html");
+                $('#article-text').val('');
+                artInitHtml(cmsParam);
+             }
+           }else{
+             window.onpageshow = function(){
+                createPageHTML(5, 0, "index", "html");
+                $('#article-text').val('');
+                artInitHtml(cmsParam);
+             }
+           }
+       $('.current-page .num-cur').html( cmsParam.pageIndex + 1 );
+      $('.current-page .num-all').html( cmsParam.pageCount );
+</script>
+  <script>
+    changeVertion('/modules/lawlules/js/common.js', 'js');
+    </script>
+</body>
+</html>

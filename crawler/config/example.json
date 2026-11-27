@@ -1,0 +1,13 @@
+{
+  "name": "example-replace-before-use",
+  "allowed_hosts": ["example.org"],
+  "seeds": ["https://example.org/replace-with-official-list"],
+  "link_pattern": "\\.pdf(?:\\?|$)|/policy/|/list/",
+  "respect_robots": true,
+  "interval": 1.5,
+  "timeout": 20,
+  "max_bytes": 20971520,
+  "max_attempts": 3,
+  "max_depth": 3,
+  "max_tasks": 200
+}
